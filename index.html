@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
     <title>Inspecto | Archives d'inspection</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -12,9 +13,24 @@
         <section class="empty">
           <h2>Chargement d'Inspecto...</h2>
           <p class="muted">Si cette page reste bloquee, recharge la page ou verifie la connexion internet.</p>
+          <button class="btn primary" type="button" onclick="inspectoClearCache()">Vider le cache</button>
         </section>
       </main>
     </div>
-    <script type="module" src="app.js"></script>
+    <script>
+      async function inspectoClearCache() {
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((key) => caches.delete(key)));
+          }
+        } finally {
+          location.replace(location.pathname + "?refresh=" + Date.now());
+        }
+      }
+    </script>
+    <script type="module" src="app.js?v=20260508-remember-cache"></script>
   </body>
 </html>

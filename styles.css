@@ -264,6 +264,21 @@ button {
   font-weight: 700;
 }
 
+.remember-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.remember-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+
 .hero-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = "https://itabonpgzpokcdfcyhdx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0YWJvbnBnenBva2NkZmN5aGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjI3MDksImV4cCI6MjA5MzgzODcwOX0.FGR5Ol7H8Ln7zEhCG_gbKqfRL-lEoQg2BFPlCVGLwSs";
 const PHOTO_BUCKET = "inspection-photos";
+const REMEMBER_KEY = "inspecto.rememberSession";
 const MAX_PHOTO_SIZE = 1600;
 const PHOTO_QUALITY = 0.78;
 
@@ -78,9 +79,58 @@ const inspectionSchema = [
 ];
 
 const $app = document.querySelector("#app");
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const adaptiveAuthStorage = {
+  getItem(key) {
+    return getRememberPreference() ? localStorage.getItem(key) : sessionStorage.getItem(key);
+  },
+  setItem(key, value) {
+    if (getRememberPreference()) {
+      localStorage.setItem(key, value);
+      sessionStorage.removeItem(key);
+      return;
+    }
+    sessionStorage.setItem(key, value);
+    localStorage.removeItem(key);
+  },
+  removeItem(key) {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  },
+};
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: adaptiveAuthStorage,
+  },
+});
 const state = { user: null, inspections: [] };
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
+
+function getRememberPreference() {
+  return localStorage.getItem(REMEMBER_KEY) === "true";
+}
+
+function setRememberPreference(remember) {
+  if (remember) localStorage.setItem(REMEMBER_KEY, "true");
+  else localStorage.removeItem(REMEMBER_KEY);
+}
+
+window.inspectoClearCache = async function inspectoClearCache() {
+  try {
+    await supabaseClient.auth.signOut();
+  } catch {
+    // Continue clearing browser storage even if Supabase is unavailable.
+  }
+  localStorage.clear();
+  sessionStorage.clear();
+  if ("caches" in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  }
+  location.replace(location.pathname + "?refresh=" + Date.now());
+};
 
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({
@@ -144,6 +194,7 @@ function renderFatalError(error) {
           <h2>Inspecto n'a pas pu charger</h2>
           <p class="muted">Recharge la page. Si le probleme reste, voici l'erreur a corriger:</p>
           <p class="error">${escapeHtml(error?.message || String(error))}</p>
+          <button class="btn primary" type="button" onclick="inspectoClearCache()">Vider le cache et recommencer</button>
         </section>
       </main>
     </div>
@@ -194,6 +245,7 @@ function renderSetupError(error) {
           <p class="muted">La connexion fonctionne, mais la table ou le bucket n'est pas encore cree.</p>
           <p class="error">${escapeHtml(error.message)}</p>
           <p>Ouvre Supabase, va dans <strong>SQL Editor</strong>, puis execute le fichier <strong>supabase-schema.sql</strong> du projet.</p>
+          <button class="btn ghost" type="button" onclick="inspectoClearCache()">Vider le cache</button>
         </section>
       </main>
     </div>
@@ -230,9 +282,14 @@ function renderAuth(mode = "login", message = "") {
                 <label for="password">Mot de passe</label>
                 <input id="password" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="6" />
               </div>
+              <label class="remember-row">
+                <input id="rememberSession" type="checkbox" ${getRememberPreference() ? "checked" : ""} />
+                <span>Se souvenir de moi sur cet appareil</span>
+              </label>
               <button class="btn primary full" type="submit">${mode === "login" ? "Se connecter" : "Creer le compte"}</button>
               ${message ? `<div class="error">${escapeHtml(message)}</div>` : ""}
               <p class="muted">Les comptes, inspections et photos sont synchronises avec Supabase.</p>
+              <button class="btn ghost full" type="button" onclick="inspectoClearCache()">Vider le cache de connexion</button>
             </form>
           </div>
         </div>
@@ -248,6 +305,8 @@ function renderAuth(mode = "login", message = "") {
     event.preventDefault();
     const email = document.querySelector("#email").value.trim().toLowerCase();
     const password = document.querySelector("#password").value;
+    const remember = document.querySelector("#rememberSession").checked;
+    setRememberPreference(remember);
 
     if (mode === "signup") {
       const name = document.querySelector("#name").value.trim();
