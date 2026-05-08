@@ -371,6 +371,7 @@ function renderDetail(id) {
           </div>
           <div class="topbar-actions">
             <button class="btn ghost" id="backToArchiveBtn">Archives</button>
+            <button class="btn ghost" id="notionExportBtn">Exporter Notion</button>
             <button class="btn primary" id="editFromDetailBtn">Modifier</button>
           </div>
         </section>
@@ -394,7 +395,81 @@ function renderDetail(id) {
     location.hash = `view=form&id=${inspection.id}`;
     render();
   });
+  document.querySelector("#notionExportBtn").addEventListener("click", async () => {
+    await exportInspectionForNotion(inspection);
+  });
   bindPhotoViewer(inspection);
+}
+
+async function exportInspectionForNotion(inspection) {
+  const markdown = buildNotionMarkdown(inspection);
+  try {
+    await navigator.clipboard.writeText(markdown);
+    showToast("Inspection copiée pour Notion.");
+  } catch {
+    downloadTextFile(`${slugify(inspection.address || "inspection")}-notion.md`, markdown);
+    showToast("Fichier Markdown téléchargé pour Notion.");
+  }
+}
+
+function buildNotionMarkdown(inspection) {
+  const lines = [
+    `# Inspection - ${inspection.address || "Adresse à compléter"}`,
+    "",
+    `**Créé le:** ${formatDate(inspection.createdAt)}`,
+    `**Modifié le:** ${formatDate(inspection.updatedAt)}`,
+    "",
+  ];
+
+  inspectionSchema.forEach((category, categoryIndex) => {
+    lines.push(`## ${categoryIndex + 1}) ${category.title}`, "");
+    category.items.forEach(([title, help], itemIndex) => {
+      const answer = inspection.answers[`${categoryIndex}-${itemIndex}`] || { ok: false, note: "", photos: [] };
+      lines.push(`### ${answer.ok ? "[x]" : "[ ]"} ${title}`);
+      lines.push(help);
+      lines.push("");
+      lines.push(`**Note:** ${answer.note || "Aucune note inscrite."}`);
+      lines.push(`**Photos:** ${answer.photos.length}`);
+      lines.push("");
+    });
+  });
+
+  lines.push("> Les photos restent dans Inspecto pour cette preview locale. Pour une intégration Notion complète avec images, il faudra ajouter un backend connecté à l'API Notion.");
+  return lines.join("\n");
+}
+
+function downloadTextFile(filename, content) {
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60) || "inspection";
+}
+
+function showToast(message) {
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.classList.add("show"), 10);
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 180);
+  }, 2600);
 }
 
 function bindPhotoViewer(inspection) {
