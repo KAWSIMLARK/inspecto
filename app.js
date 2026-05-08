@@ -735,7 +735,7 @@ function exportInspectionPdf(inspection) {
   printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
-  printWindow.focus();
+  setTimeout(() => printWindow.focus(), 50);
   showToast("Rapport PDF pret dans un nouvel onglet.");
 }
 
@@ -899,7 +899,11 @@ function formatDate(value) {
 }
 
 window.addEventListener("hashchange", render);
-window.addEventListener("error", (event) => renderFatalError(event.error || event.message));
-window.addEventListener("unhandledrejection", (event) => renderFatalError(event.reason));
+window.addEventListener("error", (event) => {
+  console.error(event.error || event.message);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  console.error(event.reason);
+});
 supabaseClient?.auth.onAuthStateChange(() => render());
 render();
