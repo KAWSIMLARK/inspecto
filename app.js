@@ -1,4 +1,6 @@
 const STORAGE_KEY = "inspecto.demo.v1";
+const MAX_PHOTO_SIZE = 1600;
+const PHOTO_QUALITY = 0.78;
 
 const inspectionSchema = [
   {
@@ -583,13 +585,19 @@ function bindForm(inspectionId) {
     input.addEventListener("change", async () => {
       const key = input.dataset.photoInput;
       const files = [...input.files].slice(0, 8);
-      saveInspectionFromForm(inspectionId);
-      const photos = await Promise.all(files.map(fileToPhoto));
-      mutateInspection(inspectionId, (inspection) => {
-        inspection.answers[key].photos.push(...photos);
-        inspection.updatedAt = new Date().toISOString();
-      });
-      renderForm(inspectionId);
+      if (!files.length) return;
+
+      try {
+        saveInspectionFromForm(inspectionId);
+        const photos = await Promise.all(files.map(fileToPhoto));
+        mutateInspection(inspectionId, (inspection) => {
+          inspection.answers[key].photos.push(...photos);
+          inspection.updatedAt = new Date().toISOString();
+        });
+        renderForm(inspectionId);
+      } catch (error) {
+        alert("La photo est trop lourde pour être sauvegardée dans cette preview. Essaie avec moins de photos ou une image plus petite.");
+      }
     });
   });
 
@@ -637,8 +645,33 @@ function mutateInspection(inspectionId, mutator) {
 
 function fileToPhoto(file) {
   return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("File is not an image"));
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = () => resolve({ id: uid(), name: file.name, data: reader.result });
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, MAX_PHOTO_SIZE / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, width, height);
+
+        resolve({
+          id: uid(),
+          name: file.name,
+          data: canvas.toDataURL("image/jpeg", PHOTO_QUALITY),
+        });
+      };
+      image.onerror = reject;
+      image.src = reader.result;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
