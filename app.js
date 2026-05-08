@@ -1,108 +1,87 @@
-const STORAGE_KEY = "inspecto.demo.v1";
+const SUPABASE_URL = "https://itabonpgzpokcdfcyhdx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0YWJvbnBnenBva2NkZmN5aGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjI3MDksImV4cCI6MjA5MzgzODcwOX0.FGR5Ol7H8Ln7zEhCG_gbKqfRL-lEoQg2BFPlCVGLwSs";
+const PHOTO_BUCKET = "inspection-photos";
 const MAX_PHOTO_SIZE = 1600;
 const PHOTO_QUALITY = 0.78;
 
 const inspectionSchema = [
   {
-    title: "Extérieur",
+    title: "Exterieur",
     items: [
-      ["Fondation", "Y a-t-il des fissures actives ou anciennes? De l'humidité visible au sous-sol? Bloc ou coulé?"],
-      ["Revêtement extérieur", "Quelle est l'année d'installation? Zones déjà réparées? Section endommagée? Possibilité d'infiltration d'eau? Composition bien faite?"],
-      ["Portes / Fenêtres", "Sont-elles toutes fonctionnelles? Sont-elles toutes Egress? Infiltration? Morceaux manquants?"],
-      ["Balcons / Escaliers / Garde-corps", "Sont-ils solides et conformes au code? Rouille ou bois pourri? Étriers? Ils sont assis sur quoi?"],
-      ["Drainage du terrain, stationnement, trottoirs", "L'eau s'éloigne-t-elle bien du bâtiment? Stationnement ou trottoirs fissurés?"],
+      ["Fondation", "Y a-t-il des fissures actives ou anciennes? De l'humidite visible au sous-sol? Bloc ou coule?"],
+      ["Revetement exterieur", "Annee d'installation? Zones deja reparees? Section endommagee? Possibilite d'infiltration d'eau? Composition bien faite?"],
+      ["Portes / Fenetres", "Sont-elles toutes fonctionnelles? Sont-elles toutes Egress? Infiltration? Morceaux manquants?"],
+      ["Balcons / Escaliers / Garde-corps", "Solides et conformes au code? Rouille ou bois pourri? Etriers? Ils sont assis sur quoi?"],
+      ["Drainage du terrain, stationnement, trottoirs", "L'eau s'eloigne-t-elle bien du batiment? Stationnement ou trottoirs fissures?"],
     ],
   },
   {
     title: "Toiture",
     items: [
-      ["Revêtement (bardeaux/tôle)", "Date de la dernière réfection? Années de garantie restantes? Matériaux? Compagnie?"],
-      ["Gouttières et descentes", "Fonctionnelles ou obstruées? L'eau s'éloigne-t-elle des fondations? Sections manquantes?"],
-      ["Solins, émergences", "Ont-ils été entretenus récemment? Y a-t-il des fissures?"],
-      ["Traces d'infiltration", "Y a-t-il eu des réparations de plafond liées à des fuites?"],
+      ["Revetement (bardeaux/tole)", "Date de la derniere refection? Annees de garantie restantes? Materiaux? Compagnie?"],
+      ["Gouttieres et descentes", "Fonctionnelles ou obstruees? L'eau s'eloigne-t-elle des fondations? Sections manquantes?"],
+      ["Solins, emergences", "Ont-ils ete entretenus recemment? Y a-t-il des fissures?"],
+      ["Traces d'infiltration", "Y a-t-il eu des reparations de plafond liees a des fuites?"],
     ],
   },
   {
     title: "Structure",
     items: [
-      ["Planchers (dénivellation)", "Y a-t-il du dénivellement ou du craquement?"],
-      ["Murs porteurs (fissures/humidité)", "Présence de fissures traversantes ou d'humidité?"],
-      ["Poutres / Colonnes / Solives", "Ont-elles subi des renforcements ou réparations visibles? Nouvel footing, etc."],
+      ["Planchers (denivellation)", "Y a-t-il du denivellement ou du craquement?"],
+      ["Murs porteurs (fissures/humidite)", "Presence de fissures traversantes ou d'humidite?"],
+      ["Poutres / Colonnes / Solives", "Renforcements ou reparations visibles? Nouvel footing, etc."],
     ],
   },
   {
     title: "Plomberie",
     items: [
-      ["Entrée d'eau principale", "Est-elle équipée d'un clapet antiretour? Réparation visible ou réfection?"],
-      ["Chauffe-eau (âge, fuite, soupape)", "Quelle est l'année? Fuites ou corrosion? Pièce manquante?"],
-      ["Tuyauterie visible", "Matériau utilisé (cuivre, PEX, poly-B)? Sections déjà remplacées?"],
-      ["Salle de bain", "Ventilation efficace? Scellant en bon état?"],
+      ["Entree d'eau principale", "Equipee d'un clapet antiretour? Reparation visible ou refection?"],
+      ["Chauffe-eau (age, fuite, soupape)", "Quelle est l'annee? Fuites ou corrosion? Piece manquante?"],
+      ["Tuyauterie visible", "Materiau utilise (cuivre, PEX, poly-B)? Sections deja remplacees?"],
+      ["Salle de bain", "Ventilation efficace? Scellant en bon etat?"],
     ],
   },
   {
-    title: "Électricité",
+    title: "Electricite",
     items: [
-      ["Panneaux", "Année, capacité en ampères, conformité aux normes actuelles, marque?"],
-      ["Prises DDFT (GFCI)", "Présentes et fonctionnelles dans la cuisine et salle de bain?"],
-      ["Éclairage / Interrupteurs / plinthe", "Tous fonctionnels? Trace de surchauffe?"],
-      ["Détecteurs fumée / CO", "Fonctionnels? Manquants?"],
+      ["Panneaux", "Annee, capacite en amperes, conformite aux normes actuelles, marque?"],
+      ["Prises DDFT (GFCI)", "Presentes et fonctionnelles dans la cuisine et salle de bain?"],
+      ["Eclairage / Interrupteurs / plinthe", "Tous fonctionnels? Trace de surchauffe?"],
+      ["Detecteurs fumee / CO", "Fonctionnels? Manquants?"],
     ],
   },
   {
     title: "Chauffage & Ventilation",
     items: [
-      ["Système de chauffage (type/état)", "Type, âge, état général et entretien visible."],
-      ["Ventilation sdb et cuisine", "Sortie vers l'extérieur ou seulement recirculation?"],
-      ["Conduit sécheuse", "Est-il propre et bien raccordé vers l'extérieur?"],
+      ["Systeme de chauffage (type/etat)", "Type, age, etat general et entretien visible."],
+      ["Ventilation sdb et cuisine", "Sortie vers l'exterieur ou seulement recirculation?"],
+      ["Conduit secheuse", "Propre et bien raccorde vers l'exterieur?"],
     ],
   },
   {
-    title: "Intérieur",
+    title: "Interieur",
     items: [
-      ["Planchers / Murs / Plafonds", "Y a-t-il des signes de dégât des eaux ou de moisissure?"],
-      ["Armoires / Comptoirs", "Âge et état général? Besoin de remplacement?"],
-      ["Odeurs / humidité", "Odeur persistante (moisi, cigarette, animaux)?"],
+      ["Planchers / Murs / Plafonds", "Signes de degat des eaux ou de moisissure?"],
+      ["Armoires / Comptoirs", "Age et etat general? Besoin de remplacement?"],
+      ["Odeurs / humidite", "Odeur persistante (moisi, cigarette, animaux)?"],
     ],
   },
   {
     title: "Autres",
     items: [
-      ["Isolation / Entretoit", "Y a-t-il un accès facile? L'isolant est-il uniforme?"],
-      ["Insectes / Vermine", "Traces de présence (excréments, trous, nids, trappes)?"],
+      ["Isolation / Entretoit", "Acces facile? Isolant uniforme?"],
+      ["Insectes / Vermine", "Traces de presence (excrements, trous, nids, trappes)?"],
     ],
   },
 ];
 
 const $app = document.querySelector("#app");
-
-const uid = () => crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random());
-
-function loadState() {
-  const fallback = { users: [], sessionEmail: null };
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function currentUser() {
-  const state = loadState();
-  return state.users.find((user) => user.email === state.sessionEmail) || null;
-}
-
-function setSession(email) {
-  const state = loadState();
-  state.sessionEmail = email;
-  saveState(state);
-}
+const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const state = { user: null, inspections: [] };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function escapeHtml(value = "") {
-  return value.replace(/[&<>"']/g, (char) => ({
+  return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
@@ -115,41 +94,84 @@ function buildEmptyInspection() {
   const answers = {};
   inspectionSchema.forEach((category, categoryIndex) => {
     category.items.forEach((item, itemIndex) => {
-      answers[`${categoryIndex}-${itemIndex}`] = {
-        ok: false,
-        note: "",
-        photos: [],
-      };
+      answers[`${categoryIndex}-${itemIndex}`] = { ok: false, note: "", photos: [] };
     });
   });
 
-  return {
-    id: uid(),
-    address: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    answers,
-  };
+  const now = new Date().toISOString();
+  return { id: uid(), address: "", createdAt: now, updatedAt: now, answers };
 }
 
-function render() {
-  const user = currentUser();
-  if (!user) {
+async function render() {
+  if (!supabaseClient) {
+    renderAuth("login", "Supabase n'a pas pu charger. Recharge la page quand la connexion internet est disponible.");
+    return;
+  }
+
+  const { data } = await supabaseClient.auth.getUser();
+  state.user = data.user || null;
+  if (!state.user) {
     renderAuth();
     return;
   }
 
+  const loaded = await loadInspections();
+  if (!loaded) return;
   const params = new URLSearchParams(location.hash.replace("#", ""));
-  if (params.get("view") === "form") {
-    renderForm(params.get("id"));
-    return;
-  }
-  if (params.get("view") === "detail") {
-    renderDetail(params.get("id"));
-    return;
+  if (params.get("view") === "form") return renderForm(params.get("id"));
+  if (params.get("view") === "detail") return renderDetail(params.get("id"));
+  renderArchive();
+}
+
+async function loadInspections() {
+  const { data, error } = await supabaseClient
+    .from("inspections")
+    .select("*")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    renderSetupError(error);
+    state.inspections = [];
+    return false;
   }
 
-  renderArchive();
+  state.inspections = data.map(fromDbInspection);
+  return true;
+}
+
+function fromDbInspection(row) {
+  const inspection = buildEmptyInspection();
+  const payload = row.payload || {};
+  return {
+    ...inspection,
+    ...payload,
+    id: row.id,
+    address: row.address || payload.address || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    answers: { ...inspection.answers, ...(payload.answers || {}) },
+  };
+}
+
+function toDbPayload(inspection) {
+  return { address: inspection.address, answers: inspection.answers };
+}
+
+function renderSetupError(error) {
+  $app.innerHTML = `
+    <div class="app-shell">
+      ${renderTopbar(state.user)}
+      <main class="container">
+        <section class="empty">
+          <h2>Configuration Supabase requise</h2>
+          <p class="muted">La connexion fonctionne, mais la table ou le bucket n'est pas encore cree.</p>
+          <p class="error">${escapeHtml(error.message)}</p>
+          <p>Ouvre Supabase, va dans <strong>SQL Editor</strong>, puis execute le fichier <strong>supabase-schema.sql</strong> du projet.</p>
+        </section>
+      </main>
+    </div>
+  `;
+  bindTopbar();
 }
 
 function renderAuth(mode = "login", message = "") {
@@ -158,14 +180,14 @@ function renderAuth(mode = "login", message = "") {
       <section class="auth-visual">
         <div class="brand"><span class="brand-mark">I</span><span>Inspecto</span></div>
         <h1>Compiler une inspection sans perdre le fil.</h1>
-        <p>Un espace simple pour créer un dossier par immeuble, joindre les photos au bon endroit et retrouver l'historique lié à ton profil.</p>
+        <p>Un espace simple pour creer un dossier par immeuble, joindre les photos au bon endroit et retrouver l'historique lie a ton profil.</p>
       </section>
       <section class="auth-panel">
         <div class="panel">
           <div class="panel-inner">
             <div class="tabs">
               <button class="tab ${mode === "login" ? "active" : ""}" data-auth-tab="login">Connexion</button>
-              <button class="tab ${mode === "signup" ? "active" : ""}" data-auth-tab="signup">Créer un compte</button>
+              <button class="tab ${mode === "signup" ? "active" : ""}" data-auth-tab="signup">Creer un compte</button>
             </div>
             <form id="authForm">
               ${mode === "signup" ? `
@@ -179,11 +201,11 @@ function renderAuth(mode = "login", message = "") {
               </div>
               <div class="field">
                 <label for="password">Mot de passe</label>
-                <input id="password" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="4" />
+                <input id="password" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required minlength="6" />
               </div>
-              <button class="btn primary full" type="submit">${mode === "login" ? "Se connecter" : "Créer le compte"}</button>
+              <button class="btn primary full" type="submit">${mode === "login" ? "Se connecter" : "Creer le compte"}</button>
               ${message ? `<div class="error">${escapeHtml(message)}</div>` : ""}
-              <p class="muted">Preview local: les données restent dans ce navigateur jusqu'à l'ajout d'un backend.</p>
+              <p class="muted">Les comptes, inspections et photos sont synchronises avec Supabase.</p>
             </form>
           </div>
         </div>
@@ -195,60 +217,53 @@ function renderAuth(mode = "login", message = "") {
     button.addEventListener("click", () => renderAuth(button.dataset.authTab));
   });
 
-  document.querySelector("#authForm").addEventListener("submit", (event) => {
+  document.querySelector("#authForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const state = loadState();
     const email = document.querySelector("#email").value.trim().toLowerCase();
     const password = document.querySelector("#password").value;
-    const user = state.users.find((candidate) => candidate.email === email);
 
     if (mode === "signup") {
-      if (user) {
-        renderAuth("signup", "Un compte existe déjà avec ce courriel.");
-        return;
-      }
-      state.users.push({
-        id: uid(),
-        name: document.querySelector("#name").value.trim(),
+      const name = document.querySelector("#name").value.trim();
+      const { data, error } = await supabaseClient.auth.signUp({
         email,
         password,
-        inspections: [],
+        options: { data: { name } },
       });
-      state.sessionEmail = email;
-      saveState(state);
+      if (error) return renderAuth("signup", error.message);
+      if (!data.session) {
+        return renderAuth("login", "Compte cree. Confirme ton courriel si Supabase te l'a demande, puis connecte-toi.");
+      }
       location.hash = "";
-      render();
+      await render();
       return;
     }
 
-    if (!user || user.password !== password) {
-      renderAuth("login", "Courriel ou mot de passe invalide.");
-      return;
-    }
-    setSession(email);
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) return renderAuth("login", error.message);
     location.hash = "";
-    render();
+    await render();
   });
 }
 
 function renderTopbar(user) {
+  const name = user?.user_metadata?.name || user?.email || "";
   return `
     <header class="topbar">
       <div class="brand"><span class="brand-mark">I</span><span>Inspecto</span></div>
       <div class="topbar-actions">
-        <span class="user-chip">${escapeHtml(user.name || user.email)}</span>
+        <span class="user-chip">${escapeHtml(name)}</span>
         <button class="btn ghost" id="archiveBtn">Archives</button>
-        <button class="btn danger" id="logoutBtn">Déconnexion</button>
+        <button class="btn danger" id="logoutBtn">Deconnexion</button>
       </div>
     </header>
   `;
 }
 
 function bindTopbar() {
-  document.querySelector("#logoutBtn")?.addEventListener("click", () => {
-    setSession(null);
+  document.querySelector("#logoutBtn")?.addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
     location.hash = "";
-    render();
+    await render();
   });
   document.querySelector("#archiveBtn")?.addEventListener("click", () => {
     location.hash = "";
@@ -257,16 +272,15 @@ function bindTopbar() {
 }
 
 function renderArchive() {
-  const user = currentUser();
-  const inspections = [...(user.inspections || [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const inspections = [...state.inspections].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   $app.innerHTML = `
     <div class="app-shell">
-      ${renderTopbar(user)}
+      ${renderTopbar(state.user)}
       <main class="container">
         <section class="hero-row">
           <div>
             <h1>Archives d'inspection</h1>
-            <p>${inspections.length} dossier${inspections.length > 1 ? "s" : ""} lié${inspections.length > 1 ? "s" : ""} à ton profil.</p>
+            <p>${inspections.length} dossier${inspections.length > 1 ? "s" : ""} lie${inspections.length > 1 ? "s" : ""} a ton profil.</p>
           </div>
           <button class="btn primary" id="newInspectionBtn">+ Nouvelle inspection</button>
         </section>
@@ -276,20 +290,15 @@ function renderArchive() {
           </section>
         ` : `
           <section class="empty">
-            <h2>Aucune inspection enregistrée</h2>
-            <p class="muted">Crée un premier dossier, ajoute l'adresse, tes notes et les photos question par question.</p>
+            <h2>Aucune inspection enregistree</h2>
+            <p class="muted">Cree un premier dossier, ajoute l'adresse, tes notes et les photos question par question.</p>
           </section>
         `}
       </main>
     </div>
   `;
   bindTopbar();
-  document.querySelector("#newInspectionBtn").addEventListener("click", () => {
-    const inspection = buildEmptyInspection();
-    mutateUser((draft) => draft.inspections.push(inspection));
-    location.hash = `view=form&id=${inspection.id}`;
-    render();
-  });
+  document.querySelector("#newInspectionBtn").addEventListener("click", createInspection);
   document.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
       location.hash = `view=form&id=${button.dataset.edit}`;
@@ -303,13 +312,7 @@ function renderArchive() {
     });
   });
   document.querySelectorAll("[data-delete]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!confirm("Supprimer cette inspection?")) return;
-      mutateUser((draft) => {
-        draft.inspections = draft.inspections.filter((inspection) => inspection.id !== button.dataset.delete);
-      });
-      renderArchive();
-    });
+    button.addEventListener("click", () => deleteInspection(button.dataset.delete));
   });
 }
 
@@ -319,11 +322,11 @@ function renderInspectionCard(inspection) {
   return `
     <article class="inspection-card">
       <div>
-        <h2 class="card-title">${escapeHtml(inspection.address || "Adresse à compléter")}</h2>
-        <p class="muted">Modifié le ${formatDate(inspection.updatedAt)}</p>
+        <h2 class="card-title">${escapeHtml(inspection.address || "Adresse a completer")}</h2>
+        <p class="muted">Modifie le ${formatDate(inspection.updatedAt)}</p>
       </div>
       <div class="card-meta">
-        <span class="badge">${completed}/28 éléments</span>
+        <span class="badge">${completed}/28 elements</span>
         <span class="badge">${photos} photo${photos > 1 ? "s" : ""}</span>
       </div>
       <div class="topbar-actions">
@@ -335,26 +338,39 @@ function renderInspectionCard(inspection) {
   `;
 }
 
-function mutateUser(mutator) {
-  const state = loadState();
-  const index = state.users.findIndex((user) => user.email === state.sessionEmail);
-  if (index === -1) return;
-  mutator(state.users[index]);
-  saveState(state);
+async function createInspection() {
+  const inspection = buildEmptyInspection();
+  const { data, error } = await supabaseClient
+    .from("inspections")
+    .insert({
+      user_id: state.user.id,
+      address: inspection.address,
+      payload: toDbPayload(inspection),
+    })
+    .select()
+    .single();
+
+  if (error) return showToast(error.message);
+  location.hash = `view=form&id=${data.id}`;
+  await render();
+}
+
+async function deleteInspection(id) {
+  if (!confirm("Supprimer cette inspection?")) return;
+  const { error } = await supabaseClient.from("inspections").delete().eq("id", id);
+  if (error) return showToast(error.message);
+  await render();
 }
 
 function findInspection(id) {
-  const user = currentUser();
-  return user?.inspections?.find((inspection) => inspection.id === id);
+  return state.inspections.find((inspection) => inspection.id === id);
 }
 
 function renderDetail(id) {
-  const user = currentUser();
   const inspection = findInspection(id);
   if (!inspection) {
     location.hash = "";
-    renderArchive();
-    return;
+    return renderArchive();
   }
 
   const completed = Object.values(inspection.answers).filter((answer) => answer.ok || answer.note || answer.photos.length).length;
@@ -362,12 +378,12 @@ function renderDetail(id) {
 
   $app.innerHTML = `
     <div class="app-shell">
-      ${renderTopbar(user)}
+      ${renderTopbar(state.user)}
       <main class="container">
         <section class="hero-row">
           <div>
             <h1>${escapeHtml(inspection.address || "Inspection sans adresse")}</h1>
-            <p>Créé le ${formatDate(inspection.createdAt)} · Modifié le ${formatDate(inspection.updatedAt)}</p>
+            <p>Cree le ${formatDate(inspection.createdAt)} - Modifie le ${formatDate(inspection.updatedAt)}</p>
           </div>
           <div class="topbar-actions">
             <button class="btn ghost" id="backToArchiveBtn">Archives</button>
@@ -377,7 +393,7 @@ function renderDetail(id) {
           </div>
         </section>
         <section class="summary-strip">
-          <span class="badge">${completed}/28 éléments documentés</span>
+          <span class="badge">${completed}/28 elements documentes</span>
           <span class="badge">${photos} photo${photos > 1 ? "s" : ""}</span>
         </section>
         <section class="detail-content">
@@ -396,67 +412,304 @@ function renderDetail(id) {
     location.hash = `view=form&id=${inspection.id}`;
     render();
   });
-  document.querySelector("#notionExportBtn").addEventListener("click", async () => {
-    await exportInspectionForNotion(inspection);
-  });
-  document.querySelector("#pdfExportBtn").addEventListener("click", () => {
-    exportInspectionPdf(inspection);
-  });
+  document.querySelector("#notionExportBtn").addEventListener("click", async () => exportInspectionForNotion(inspection));
+  document.querySelector("#pdfExportBtn").addEventListener("click", () => exportInspectionPdf(inspection));
   bindPhotoViewer(inspection);
+}
+
+function renderDetailCategory(category, categoryIndex, inspection) {
+  return `
+    <section class="category">
+      <header class="category-header"><h2>${categoryIndex + 1}) ${escapeHtml(category.title)}</h2></header>
+      ${category.items.map((item, itemIndex) => renderDetailQuestion(item, categoryIndex, itemIndex, inspection)).join("")}
+    </section>
+  `;
+}
+
+function renderDetailQuestion([title, help], categoryIndex, itemIndex, inspection) {
+  const key = `${categoryIndex}-${itemIndex}`;
+  const answer = inspection.answers[key] || { ok: false, note: "", photos: [] };
+  return `
+    <article class="question detail-question">
+      <div class="detail-heading">
+        <span class="status-dot ${answer.ok ? "done" : ""}">${answer.ok ? "✓" : "-"}</span>
+        <div>
+          <p class="question-title">${escapeHtml(title)}</p>
+          <p class="question-help">${escapeHtml(help)}</p>
+        </div>
+      </div>
+      <div class="note-box">${answer.note ? escapeHtml(answer.note) : "<span class=\"muted\">Aucune note inscrite.</span>"}</div>
+      ${answer.photos.length ? `
+        <div class="detail-photos">
+          ${answer.photos.map((photo) => `
+            <button type="button" class="detail-photo" data-open-photo="${photo.id}">
+              <img src="${photo.data}" alt="${escapeHtml(photo.name)}" />
+            </button>
+          `).join("")}
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+function renderForm(id) {
+  const inspection = findInspection(id);
+  if (!inspection) {
+    location.hash = "";
+    return renderArchive();
+  }
+
+  $app.innerHTML = `
+    <div class="app-shell">
+      ${renderTopbar(state.user)}
+      <main class="container">
+        <section class="hero-row">
+          <div>
+            <h1>Formulaire d'inspection</h1>
+            <p>Les changements sont sauvegardes a l'ajout d'une photo et lorsque tu cliques sur Enregistrer.</p>
+          </div>
+        </section>
+        <form id="inspectionForm" class="form-shell">
+          <nav class="side-nav">
+            ${inspectionSchema.map((category, index) => `
+              <button type="button" data-jump="${index}" class="${index === 0 ? "active" : ""}">
+                <span>${index + 1}. ${escapeHtml(category.title)}</span>
+                <span>${category.items.length}</span>
+              </button>
+            `).join("")}
+          </nav>
+          <section class="form-content">
+            <div class="panel">
+              <div class="panel-inner">
+                <div class="field" style="margin-top:0">
+                  <label for="address">Adresse</label>
+                  <input id="address" value="${escapeHtml(inspection.address)}" placeholder="123 rue Principale, Montreal" required />
+                </div>
+              </div>
+            </div>
+            ${inspectionSchema.map((category, categoryIndex) => renderCategory(category, categoryIndex, inspection)).join("")}
+            <div class="form-actions">
+              <button class="btn ghost" type="button" id="cancelBtn">Retour aux archives</button>
+              <button class="btn primary" type="submit">Enregistrer l'inspection</button>
+            </div>
+          </section>
+        </form>
+      </main>
+    </div>
+  `;
+  bindTopbar();
+  bindForm(inspection.id);
+}
+
+function renderCategory(category, categoryIndex, inspection) {
+  return `
+    <section class="category" id="cat-${categoryIndex}">
+      <header class="category-header">
+        <h2>${categoryIndex + 1}) ${escapeHtml(category.title)}</h2>
+        <span class="badge">${category.items.length} points</span>
+      </header>
+      ${category.items.map((item, itemIndex) => renderQuestion(item, categoryIndex, itemIndex, inspection)).join("")}
+    </section>
+  `;
+}
+
+function renderQuestion([title, help], categoryIndex, itemIndex, inspection) {
+  const key = `${categoryIndex}-${itemIndex}`;
+  const answer = inspection.answers[key] || { ok: false, note: "", photos: [] };
+  return `
+    <article class="question" data-question="${key}">
+      <div class="question-top">
+        <input class="check" type="checkbox" data-field="ok" ${answer.ok ? "checked" : ""} aria-label="Point inspecte" />
+        <div>
+          <p class="question-title">${escapeHtml(title)}</p>
+          <p class="question-help">${escapeHtml(help)}</p>
+        </div>
+      </div>
+      <div class="field">
+        <label>Note</label>
+        <textarea data-field="note" placeholder="Observations, risques, recommandations...">${escapeHtml(answer.note)}</textarea>
+      </div>
+      <div class="photo-tools">
+        <span class="section-label">Photos</span>
+        <label class="btn file-button">
+          Ajouter
+          <input type="file" accept="image/*" multiple data-photo-input="${key}" />
+        </label>
+      </div>
+      <div class="thumbs">
+        ${answer.photos.map((photo, photoIndex) => `
+          <figure class="thumb">
+            <img src="${photo.data}" alt="${escapeHtml(photo.name)}" />
+            <button type="button" title="Retirer" data-remove-photo="${key}:${photoIndex}">x</button>
+          </figure>
+        `).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function bindForm(inspectionId) {
+  document.querySelectorAll("[data-jump]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-jump]").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      document.querySelector(`#cat-${button.dataset.jump}`).scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  document.querySelector("#cancelBtn").addEventListener("click", () => {
+    location.hash = "";
+    render();
+  });
+
+  document.querySelectorAll("[data-photo-input]").forEach((input) => {
+    input.addEventListener("change", async () => {
+      const key = input.dataset.photoInput;
+      const files = [...input.files].slice(0, 8);
+      if (!files.length) return;
+      try {
+        await saveInspectionFromForm(inspectionId);
+        const photos = await Promise.all(files.map(fileToPhoto));
+        const inspection = findInspection(inspectionId);
+        inspection.answers[key].photos.push(...photos);
+        await saveInspection(inspection);
+        await render();
+      } catch (error) {
+        showToast(error.message || "La photo n'a pas pu etre sauvegardee.");
+      }
+    });
+  });
+
+  document.querySelectorAll("[data-remove-photo]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const [key, index] = button.dataset.removePhoto.split(":");
+      await saveInspectionFromForm(inspectionId);
+      const inspection = findInspection(inspectionId);
+      inspection.answers[key].photos.splice(Number(index), 1);
+      await saveInspection(inspection);
+      await render();
+    });
+  });
+
+  document.querySelector("#inspectionForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await saveInspectionFromForm(inspectionId);
+    location.hash = `view=detail&id=${inspectionId}`;
+    await render();
+  });
+}
+
+async function saveInspectionFromForm(inspectionId) {
+  const form = document.querySelector("#inspectionForm");
+  if (!form) return;
+  const inspection = findInspection(inspectionId);
+  inspection.address = document.querySelector("#address").value.trim();
+  document.querySelectorAll("[data-question]").forEach((question) => {
+    const key = question.dataset.question;
+    inspection.answers[key].ok = question.querySelector('[data-field="ok"]').checked;
+    inspection.answers[key].note = question.querySelector('[data-field="note"]').value.trim();
+  });
+  await saveInspection(inspection);
+}
+
+async function saveInspection(inspection) {
+  const { data, error } = await supabaseClient
+    .from("inspections")
+    .update({
+      address: inspection.address,
+      payload: toDbPayload(inspection),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", inspection.id)
+    .select()
+    .single();
+  if (error) throw error;
+  const updated = fromDbInspection(data);
+  const index = state.inspections.findIndex((candidate) => candidate.id === inspection.id);
+  if (index >= 0) state.inspections[index] = updated;
+}
+
+async function fileToPhoto(file) {
+  if (!file.type.startsWith("image/")) throw new Error("Le fichier choisi n'est pas une image.");
+  const blob = await resizeImage(file);
+  const path = `${state.user.id}/${uid()}.jpg`;
+  const { error } = await supabaseClient.storage.from(PHOTO_BUCKET).upload(path, blob, {
+    contentType: "image/jpeg",
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+  return { id: uid(), name: file.name, path, data: data.publicUrl };
+}
+
+function resizeImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, MAX_PHOTO_SIZE / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("La photo n'a pas pu etre compressee."));
+        }, "image/jpeg", PHOTO_QUALITY);
+      };
+      image.onerror = reject;
+      image.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 async function exportInspectionForNotion(inspection) {
   const markdown = buildNotionMarkdown(inspection);
   try {
     await navigator.clipboard.writeText(markdown);
-    showToast("Inspection copiée pour Notion.");
+    showToast("Inspection copiee pour Notion.");
   } catch {
     downloadTextFile(`${slugify(inspection.address || "inspection")}-notion.md`, markdown);
-    showToast("Fichier Markdown téléchargé pour Notion.");
+    showToast("Fichier Markdown telecharge pour Notion.");
   }
 }
 
 function buildNotionMarkdown(inspection) {
   const lines = [
-    `# Inspection - ${inspection.address || "Adresse à compléter"}`,
+    `# Inspection - ${inspection.address || "Adresse a completer"}`,
     "",
-    `**Créé le:** ${formatDate(inspection.createdAt)}`,
-    `**Modifié le:** ${formatDate(inspection.updatedAt)}`,
+    `**Cree le:** ${formatDate(inspection.createdAt)}`,
+    `**Modifie le:** ${formatDate(inspection.updatedAt)}`,
     "",
   ];
-
   inspectionSchema.forEach((category, categoryIndex) => {
     lines.push(`## ${categoryIndex + 1}) ${category.title}`, "");
     category.items.forEach(([title, help], itemIndex) => {
       const answer = inspection.answers[`${categoryIndex}-${itemIndex}`] || { ok: false, note: "", photos: [] };
       lines.push(`### ${answer.ok ? "[x]" : "[ ]"} ${title}`);
-      lines.push(help);
-      lines.push("");
-      lines.push(`**Note:** ${answer.note || "Aucune note inscrite."}`);
-      lines.push(`**Photos:** ${answer.photos.length}`);
-      lines.push("");
+      lines.push(help, "", `**Note:** ${answer.note || "Aucune note inscrite."}`, `**Photos:** ${answer.photos.length}`, "");
     });
   });
-
-  lines.push("> Les photos restent dans Inspecto pour cette preview locale. Pour une intégration Notion complète avec images, il faudra ajouter un backend connecté à l'API Notion.");
   return lines.join("\n");
 }
 
 function exportInspectionPdf(inspection) {
   const html = buildPdfHtml(inspection);
   const printWindow = window.open("", "_blank");
-
   if (!printWindow) {
     downloadTextFile(`${slugify(inspection.address || "inspection")}-rapport.html`, html);
-    showToast("Fenêtre bloquée: fichier HTML téléchargé pour impression PDF.");
-    return;
+    return showToast("Fenetre bloquee: fichier HTML telecharge pour impression PDF.");
   }
-
   printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.focus();
-  showToast("Rapport PDF prêt dans un nouvel onglet.");
+  showToast("Rapport PDF pret dans un nouvel onglet.");
 }
 
 function buildPdfHtml(inspection) {
@@ -468,7 +721,7 @@ function buildPdfHtml(inspection) {
         const answer = inspection.answers[`${categoryIndex}-${itemIndex}`] || { ok: false, note: "", photos: [] };
         return `
           <article class="item">
-            <h3>${answer.ok ? "Inspecté" : "À vérifier"} - ${escapeHtml(title)}</h3>
+            <h3>${answer.ok ? "Inspecte" : "A verifier"} - ${escapeHtml(title)}</h3>
             <p class="help">${escapeHtml(help)}</p>
             <p><strong>Note:</strong> ${answer.note ? escapeHtml(answer.note) : "Aucune note inscrite."}</p>
             <p><strong>Photos:</strong> ${answer.photos.length}</p>
@@ -477,7 +730,6 @@ function buildPdfHtml(inspection) {
       }).join("")}
     </section>
   `).join("");
-
   const photoSection = photos.length ? `
     <section class="section photo-annex">
       <h2>Photos en annexe</h2>
@@ -490,12 +742,7 @@ function buildPdfHtml(inspection) {
         `).join("")}
       </div>
     </section>
-  ` : `
-    <section class="section">
-      <h2>Photos en annexe</h2>
-      <p>Aucune photo jointe à cette inspection.</p>
-    </section>
-  `;
+  ` : `<section class="section"><h2>Photos en annexe</h2><p>Aucune photo jointe a cette inspection.</p></section>`;
 
   return `<!doctype html>
 <html lang="fr">
@@ -504,110 +751,32 @@ function buildPdfHtml(inspection) {
     <title>Rapport inspection - ${escapeHtml(inspection.address || "Sans adresse")}</title>
     <style>
       * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        color: #17211c;
-        font-family: Arial, Helvetica, sans-serif;
-        line-height: 1.45;
-      }
-      main {
-        max-width: 920px;
-        margin: 0 auto;
-        padding: 32px;
-      }
-      h1 {
-        margin: 0 0 8px;
-        font-size: 30px;
-      }
-      h2 {
-        margin: 28px 0 12px;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #22664b;
-        color: #164835;
-        font-size: 21px;
-      }
-      h3 {
-        margin: 0 0 6px;
-        font-size: 16px;
-      }
-      .meta {
-        margin: 0 0 22px;
-        color: #5f6b64;
-      }
-      .item {
-        break-inside: avoid;
-        margin: 0 0 12px;
-        padding: 12px;
-        border: 1px solid #d9d2c7;
-        border-radius: 6px;
-      }
-      .help {
-        margin-top: 0;
-        color: #5f6b64;
-      }
-      .photo-annex {
-        break-before: page;
-      }
-      .photo-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-      }
-      figure {
-        break-inside: avoid;
-        margin: 0;
-        border: 1px solid #d9d2c7;
-        border-radius: 6px;
-        overflow: hidden;
-      }
-      img {
-        display: block;
-        width: 100%;
-        max-height: 420px;
-        object-fit: contain;
-        background: #f3eee4;
-      }
-      figcaption {
-        padding: 8px;
-        font-size: 12px;
-        color: #4d5a52;
-      }
-      .print-actions {
-        position: sticky;
-        top: 0;
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        padding: 10px 0;
-        background: #fff;
-      }
-      button {
-        min-height: 38px;
-        padding: 0 14px;
-        border: 0;
-        border-radius: 6px;
-        background: #22664b;
-        color: #fff;
-        font: inherit;
-        font-weight: 700;
-        cursor: pointer;
-      }
-      @media print {
-        main { padding: 0; }
-        .print-actions { display: none; }
-      }
+      body { margin: 0; color: #17211c; font-family: Arial, Helvetica, sans-serif; line-height: 1.45; }
+      main { max-width: 920px; margin: 0 auto; padding: 32px; }
+      h1 { margin: 0 0 8px; font-size: 30px; }
+      h2 { margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #22664b; color: #164835; font-size: 21px; }
+      h3 { margin: 0 0 6px; font-size: 16px; }
+      .meta { margin: 0 0 22px; color: #5f6b64; }
+      .item { break-inside: avoid; margin: 0 0 12px; padding: 12px; border: 1px solid #d9d2c7; border-radius: 6px; }
+      .help { margin-top: 0; color: #5f6b64; }
+      .photo-annex { break-before: page; }
+      .photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      figure { break-inside: avoid; margin: 0; border: 1px solid #d9d2c7; border-radius: 6px; overflow: hidden; }
+      img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: #f3eee4; }
+      figcaption { padding: 8px; font-size: 12px; color: #4d5a52; }
+      .print-actions { position: sticky; top: 0; display: flex; justify-content: flex-end; padding: 10px 0; background: #fff; }
+      button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 6px; background: #22664b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+      @media print { main { padding: 0; } .print-actions { display: none; } }
     </style>
   </head>
   <body>
     <main>
-      <div class="print-actions">
-        <button onclick="window.print()">Enregistrer en PDF</button>
-      </div>
+      <div class="print-actions"><button onclick="window.print()">Enregistrer en PDF</button></div>
       <h1>Rapport d'inspection</h1>
       <p class="meta">
-        <strong>Adresse:</strong> ${escapeHtml(inspection.address || "Adresse à compléter")}<br />
-        <strong>Créé le:</strong> ${formatDate(inspection.createdAt)}<br />
-        <strong>Modifié le:</strong> ${formatDate(inspection.updatedAt)}
+        <strong>Adresse:</strong> ${escapeHtml(inspection.address || "Adresse a completer")}<br />
+        <strong>Cree le:</strong> ${formatDate(inspection.createdAt)}<br />
+        <strong>Modifie le:</strong> ${formatDate(inspection.updatedAt)}
       </p>
       ${sections}
       ${photoSection}
@@ -621,16 +790,43 @@ function collectInspectionPhotos(inspection) {
   inspectionSchema.forEach((category, categoryIndex) => {
     category.items.forEach(([title], itemIndex) => {
       const answer = inspection.answers[`${categoryIndex}-${itemIndex}`] || { photos: [] };
-      answer.photos.forEach((photo) => {
-        photos.push({
-          ...photo,
-          category: category.title,
-          question: title,
-        });
-      });
+      answer.photos.forEach((photo) => photos.push({ ...photo, category: category.title, question: title }));
     });
   });
   return photos;
+}
+
+function bindPhotoViewer(inspection) {
+  document.querySelectorAll("[data-open-photo]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const photos = Object.values(inspection.answers).flatMap((answer) => answer.photos);
+      const photo = photos.find((candidate) => candidate.id === button.dataset.openPhoto);
+      if (photo) openPhotoViewer(photo);
+    });
+  });
+}
+
+function openPhotoViewer(photo) {
+  const viewer = document.createElement("div");
+  viewer.className = "photo-viewer";
+  viewer.innerHTML = `
+    <button class="photo-viewer-close" type="button" aria-label="Fermer">x</button>
+    <img src="${photo.data}" alt="${escapeHtml(photo.name)}" />
+    <p>${escapeHtml(photo.name)}</p>
+  `;
+  document.body.appendChild(viewer);
+  const close = () => {
+    viewer.remove();
+    document.removeEventListener("keydown", onKeydown);
+  };
+  const onKeydown = (event) => {
+    if (event.key === "Escape") close();
+  };
+  viewer.addEventListener("click", (event) => {
+    if (event.target === viewer) close();
+  });
+  viewer.querySelector(".photo-viewer-close").addEventListener("click", close);
+  document.addEventListener("keydown", onKeydown);
 }
 
 function downloadTextFile(filename, content) {
@@ -668,286 +864,6 @@ function showToast(message) {
   }, 2600);
 }
 
-function bindPhotoViewer(inspection) {
-  document.querySelectorAll("[data-open-photo]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const photos = Object.values(inspection.answers).flatMap((answer) => answer.photos);
-      const photo = photos.find((candidate) => candidate.id === button.dataset.openPhoto);
-      if (photo) openPhotoViewer(photo);
-    });
-  });
-}
-
-function openPhotoViewer(photo) {
-  const viewer = document.createElement("div");
-  viewer.className = "photo-viewer";
-  viewer.innerHTML = `
-    <button class="photo-viewer-close" type="button" aria-label="Fermer">x</button>
-    <img src="${photo.data}" alt="${escapeHtml(photo.name)}" />
-    <p>${escapeHtml(photo.name)}</p>
-  `;
-  document.body.appendChild(viewer);
-
-  const close = () => {
-    viewer.remove();
-    document.removeEventListener("keydown", onKeydown);
-  };
-  const onKeydown = (event) => {
-    if (event.key === "Escape") close();
-  };
-
-  viewer.addEventListener("click", (event) => {
-    if (event.target === viewer) close();
-  });
-  viewer.querySelector(".photo-viewer-close").addEventListener("click", close);
-  document.addEventListener("keydown", onKeydown);
-}
-
-function renderDetailCategory(category, categoryIndex, inspection) {
-  return `
-    <section class="category">
-      <header class="category-header">
-        <h2>${categoryIndex + 1}) ${escapeHtml(category.title)}</h2>
-      </header>
-      ${category.items.map((item, itemIndex) => renderDetailQuestion(item, categoryIndex, itemIndex, inspection)).join("")}
-    </section>
-  `;
-}
-
-function renderDetailQuestion([title, help], categoryIndex, itemIndex, inspection) {
-  const key = `${categoryIndex}-${itemIndex}`;
-  const answer = inspection.answers[key] || { ok: false, note: "", photos: [] };
-  return `
-    <article class="question detail-question">
-      <div class="detail-heading">
-        <span class="status-dot ${answer.ok ? "done" : ""}">${answer.ok ? "✓" : "-"}</span>
-        <div>
-          <p class="question-title">${escapeHtml(title)}</p>
-          <p class="question-help">${escapeHtml(help)}</p>
-        </div>
-      </div>
-      <div class="note-box">${answer.note ? escapeHtml(answer.note) : "<span class=\"muted\">Aucune note inscrite.</span>"}</div>
-      ${answer.photos.length ? `
-        <div class="detail-photos">
-          ${answer.photos.map((photo) => `
-            <button type="button" class="detail-photo" data-open-photo="${photo.id}">
-              <img src="${photo.data}" alt="${escapeHtml(photo.name)}" />
-            </button>
-          `).join("")}
-        </div>
-      ` : ""}
-    </article>
-  `;
-}
-
-function renderForm(id) {
-  const user = currentUser();
-  const inspection = findInspection(id);
-  if (!inspection) {
-    location.hash = "";
-    renderArchive();
-    return;
-  }
-
-  $app.innerHTML = `
-    <div class="app-shell">
-      ${renderTopbar(user)}
-      <main class="container">
-        <section class="hero-row">
-          <div>
-            <h1>Formulaire d'inspection</h1>
-            <p>Les changements sont sauvegardés à l'ajout d'une photo et lorsque tu cliques sur Enregistrer.</p>
-          </div>
-        </section>
-        <form id="inspectionForm" class="form-shell">
-          <nav class="side-nav">
-            ${inspectionSchema.map((category, index) => `
-              <button type="button" data-jump="${index}" class="${index === 0 ? "active" : ""}">
-                <span>${index + 1}. ${escapeHtml(category.title)}</span>
-                <span>${category.items.length}</span>
-              </button>
-            `).join("")}
-          </nav>
-          <section class="form-content">
-            <div class="panel">
-              <div class="panel-inner">
-                <div class="field" style="margin-top:0">
-                  <label for="address">Adresse</label>
-                  <input id="address" value="${escapeHtml(inspection.address)}" placeholder="123 rue Principale, Montréal" required />
-                </div>
-              </div>
-            </div>
-            ${inspectionSchema.map((category, categoryIndex) => renderCategory(category, categoryIndex, inspection)).join("")}
-            <div class="form-actions">
-              <button class="btn ghost" type="button" id="cancelBtn">Retour aux archives</button>
-              <button class="btn primary" type="submit">Enregistrer l'inspection</button>
-            </div>
-          </section>
-        </form>
-      </main>
-    </div>
-  `;
-  bindTopbar();
-  bindForm(inspection.id);
-}
-
-function renderCategory(category, categoryIndex, inspection) {
-  return `
-    <section class="category" id="cat-${categoryIndex}">
-      <header class="category-header">
-        <h2>${categoryIndex + 1}) ${escapeHtml(category.title)}</h2>
-        <span class="badge">${category.items.length} points</span>
-      </header>
-      ${category.items.map((item, itemIndex) => renderQuestion(item, categoryIndex, itemIndex, inspection)).join("")}
-    </section>
-  `;
-}
-
-function renderQuestion([title, help], categoryIndex, itemIndex, inspection) {
-  const key = `${categoryIndex}-${itemIndex}`;
-  const answer = inspection.answers[key] || { ok: false, note: "", photos: [] };
-  return `
-    <article class="question" data-question="${key}">
-      <div class="question-top">
-        <input class="check" type="checkbox" data-field="ok" ${answer.ok ? "checked" : ""} aria-label="Point inspecté" />
-        <div>
-          <p class="question-title">${escapeHtml(title)}</p>
-          <p class="question-help">${escapeHtml(help)}</p>
-        </div>
-      </div>
-      <div class="field">
-        <label>Note</label>
-        <textarea data-field="note" placeholder="Observations, risques, recommandations...">${escapeHtml(answer.note)}</textarea>
-      </div>
-      <div class="photo-tools">
-        <span class="section-label">Photos</span>
-        <label class="btn file-button">
-          Ajouter
-          <input type="file" accept="image/*" multiple data-photo-input="${key}" />
-        </label>
-      </div>
-      <div class="thumbs" data-thumbs="${key}">
-        ${answer.photos.map((photo, photoIndex) => `
-          <figure class="thumb">
-            <img src="${photo.data}" alt="${escapeHtml(photo.name)}" />
-            <button type="button" title="Retirer" data-remove-photo="${key}:${photoIndex}">x</button>
-          </figure>
-        `).join("")}
-      </div>
-    </article>
-  `;
-}
-
-function bindForm(inspectionId) {
-  document.querySelectorAll("[data-jump]").forEach((button) => {
-    button.addEventListener("click", () => {
-      document.querySelectorAll("[data-jump]").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      document.querySelector(`#cat-${button.dataset.jump}`).scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  });
-
-  document.querySelector("#cancelBtn").addEventListener("click", () => {
-    location.hash = "";
-    render();
-  });
-
-  document.querySelectorAll("[data-photo-input]").forEach((input) => {
-    input.addEventListener("change", async () => {
-      const key = input.dataset.photoInput;
-      const files = [...input.files].slice(0, 8);
-      if (!files.length) return;
-
-      try {
-        saveInspectionFromForm(inspectionId);
-        const photos = await Promise.all(files.map(fileToPhoto));
-        mutateInspection(inspectionId, (inspection) => {
-          inspection.answers[key].photos.push(...photos);
-          inspection.updatedAt = new Date().toISOString();
-        });
-        renderForm(inspectionId);
-      } catch (error) {
-        alert("La photo est trop lourde pour être sauvegardée dans cette preview. Essaie avec moins de photos ou une image plus petite.");
-      }
-    });
-  });
-
-  document.querySelectorAll("[data-remove-photo]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const [key, index] = button.dataset.removePhoto.split(":");
-      saveInspectionFromForm(inspectionId);
-      mutateInspection(inspectionId, (inspection) => {
-        inspection.answers[key].photos.splice(Number(index), 1);
-        inspection.updatedAt = new Date().toISOString();
-      });
-      renderForm(inspectionId);
-    });
-  });
-
-  document.querySelector("#inspectionForm").addEventListener("submit", (event) => {
-    event.preventDefault();
-    saveInspectionFromForm(inspectionId);
-    location.hash = `view=detail&id=${inspectionId}`;
-    render();
-  });
-}
-
-function saveInspectionFromForm(inspectionId) {
-  const form = document.querySelector("#inspectionForm");
-  if (!form) return;
-
-  mutateInspection(inspectionId, (inspection) => {
-    inspection.address = document.querySelector("#address").value.trim();
-    document.querySelectorAll("[data-question]").forEach((question) => {
-      const key = question.dataset.question;
-      inspection.answers[key].ok = question.querySelector('[data-field="ok"]').checked;
-      inspection.answers[key].note = question.querySelector('[data-field="note"]').value.trim();
-    });
-    inspection.updatedAt = new Date().toISOString();
-  });
-}
-
-function mutateInspection(inspectionId, mutator) {
-  mutateUser((user) => {
-    const inspection = user.inspections.find((candidate) => candidate.id === inspectionId);
-    if (inspection) mutator(inspection);
-  });
-}
-
-function fileToPhoto(file) {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith("image/")) {
-      reject(new Error("File is not an image"));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const image = new Image();
-      image.onload = () => {
-        const scale = Math.min(1, MAX_PHOTO_SIZE / Math.max(image.width, image.height));
-        const width = Math.max(1, Math.round(image.width * scale));
-        const height = Math.max(1, Math.round(image.height * scale));
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const context = canvas.getContext("2d");
-        context.drawImage(image, 0, 0, width, height);
-
-        resolve({
-          id: uid(),
-          name: file.name,
-          data: canvas.toDataURL("image/jpeg", PHOTO_QUALITY),
-        });
-      };
-      image.onerror = reject;
-      image.src = reader.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 function formatDate(value) {
   return new Intl.DateTimeFormat("fr-CA", {
     dateStyle: "medium",
@@ -956,4 +872,5 @@ function formatDate(value) {
 }
 
 window.addEventListener("hashchange", render);
+supabaseClient?.auth.onAuthStateChange(() => render());
 render();
