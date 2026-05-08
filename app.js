@@ -372,6 +372,7 @@ function renderDetail(id) {
           <div class="topbar-actions">
             <button class="btn ghost" id="backToArchiveBtn">Archives</button>
             <button class="btn ghost" id="notionExportBtn">Exporter Notion</button>
+            <button class="btn ghost" id="pdfExportBtn">Exporter PDF</button>
             <button class="btn primary" id="editFromDetailBtn">Modifier</button>
           </div>
         </section>
@@ -397,6 +398,9 @@ function renderDetail(id) {
   });
   document.querySelector("#notionExportBtn").addEventListener("click", async () => {
     await exportInspectionForNotion(inspection);
+  });
+  document.querySelector("#pdfExportBtn").addEventListener("click", () => {
+    exportInspectionPdf(inspection);
   });
   bindPhotoViewer(inspection);
 }
@@ -438,8 +442,200 @@ function buildNotionMarkdown(inspection) {
   return lines.join("\n");
 }
 
+function exportInspectionPdf(inspection) {
+  const html = buildPdfHtml(inspection);
+  const printWindow = window.open("", "_blank");
+
+  if (!printWindow) {
+    downloadTextFile(`${slugify(inspection.address || "inspection")}-rapport.html`, html);
+    showToast("Fenêtre bloquée: fichier HTML téléchargé pour impression PDF.");
+    return;
+  }
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  showToast("Rapport PDF prêt dans un nouvel onglet.");
+}
+
+function buildPdfHtml(inspection) {
+  const photos = collectInspectionPhotos(inspection);
+  const sections = inspectionSchema.map((category, categoryIndex) => `
+    <section class="section">
+      <h2>${categoryIndex + 1}) ${escapeHtml(category.title)}</h2>
+      ${category.items.map(([title, help], itemIndex) => {
+        const answer = inspection.answers[`${categoryIndex}-${itemIndex}`] || { ok: false, note: "", photos: [] };
+        return `
+          <article class="item">
+            <h3>${answer.ok ? "Inspecté" : "À vérifier"} - ${escapeHtml(title)}</h3>
+            <p class="help">${escapeHtml(help)}</p>
+            <p><strong>Note:</strong> ${answer.note ? escapeHtml(answer.note) : "Aucune note inscrite."}</p>
+            <p><strong>Photos:</strong> ${answer.photos.length}</p>
+          </article>
+        `;
+      }).join("")}
+    </section>
+  `).join("");
+
+  const photoSection = photos.length ? `
+    <section class="section photo-annex">
+      <h2>Photos en annexe</h2>
+      <div class="photo-grid">
+        ${photos.map((photo, index) => `
+          <figure>
+            <img src="${photo.data}" alt="${escapeHtml(photo.name)}" />
+            <figcaption>${index + 1}. ${escapeHtml(photo.category)} - ${escapeHtml(photo.question)}</figcaption>
+          </figure>
+        `).join("")}
+      </div>
+    </section>
+  ` : `
+    <section class="section">
+      <h2>Photos en annexe</h2>
+      <p>Aucune photo jointe à cette inspection.</p>
+    </section>
+  `;
+
+  return `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rapport inspection - ${escapeHtml(inspection.address || "Sans adresse")}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: #17211c;
+        font-family: Arial, Helvetica, sans-serif;
+        line-height: 1.45;
+      }
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 32px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 30px;
+      }
+      h2 {
+        margin: 28px 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #22664b;
+        color: #164835;
+        font-size: 21px;
+      }
+      h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+      }
+      .meta {
+        margin: 0 0 22px;
+        color: #5f6b64;
+      }
+      .item {
+        break-inside: avoid;
+        margin: 0 0 12px;
+        padding: 12px;
+        border: 1px solid #d9d2c7;
+        border-radius: 6px;
+      }
+      .help {
+        margin-top: 0;
+        color: #5f6b64;
+      }
+      .photo-annex {
+        break-before: page;
+      }
+      .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      figure {
+        break-inside: avoid;
+        margin: 0;
+        border: 1px solid #d9d2c7;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      img {
+        display: block;
+        width: 100%;
+        max-height: 420px;
+        object-fit: contain;
+        background: #f3eee4;
+      }
+      figcaption {
+        padding: 8px;
+        font-size: 12px;
+        color: #4d5a52;
+      }
+      .print-actions {
+        position: sticky;
+        top: 0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 10px 0;
+        background: #fff;
+      }
+      button {
+        min-height: 38px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 6px;
+        background: #22664b;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      @media print {
+        main { padding: 0; }
+        .print-actions { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="print-actions">
+        <button onclick="window.print()">Enregistrer en PDF</button>
+      </div>
+      <h1>Rapport d'inspection</h1>
+      <p class="meta">
+        <strong>Adresse:</strong> ${escapeHtml(inspection.address || "Adresse à compléter")}<br />
+        <strong>Créé le:</strong> ${formatDate(inspection.createdAt)}<br />
+        <strong>Modifié le:</strong> ${formatDate(inspection.updatedAt)}
+      </p>
+      ${sections}
+      ${photoSection}
+    </main>
+  </body>
+</html>`;
+}
+
+function collectInspectionPhotos(inspection) {
+  const photos = [];
+  inspectionSchema.forEach((category, categoryIndex) => {
+    category.items.forEach(([title], itemIndex) => {
+      const answer = inspection.answers[`${categoryIndex}-${itemIndex}`] || { photos: [] };
+      answer.photos.forEach((photo) => {
+        photos.push({
+          ...photo,
+          category: category.title,
+          question: title,
+        });
+      });
+    });
+  });
+  return photos;
+}
+
 function downloadTextFile(filename, content) {
-  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const type = filename.endsWith(".html") ? "text/html;charset=utf-8" : "text/markdown;charset=utf-8";
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
