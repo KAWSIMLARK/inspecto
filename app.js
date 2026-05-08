@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const SUPABASE_URL = "https://itabonpgzpokcdfcyhdx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0YWJvbnBnenBva2NkZmN5aGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjI3MDksImV4cCI6MjA5MzgzODcwOX0.FGR5Ol7H8Ln7zEhCG_gbKqfRL-lEoQg2BFPlCVGLwSs";
 const PHOTO_BUCKET = "inspection-photos";
@@ -76,7 +78,7 @@ const inspectionSchema = [
 ];
 
 const $app = document.querySelector("#app");
-const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const state = { user: null, inspections: [] };
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
