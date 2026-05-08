@@ -103,6 +103,14 @@ function buildEmptyInspection() {
 }
 
 async function render() {
+  try {
+    await renderApp();
+  } catch (error) {
+    renderFatalError(error);
+  }
+}
+
+async function renderApp() {
   if (!supabaseClient) {
     renderAuth("login", "Supabase n'a pas pu charger. Recharge la page quand la connexion internet est disponible.");
     return;
@@ -121,6 +129,23 @@ async function render() {
   if (params.get("view") === "form") return renderForm(params.get("id"));
   if (params.get("view") === "detail") return renderDetail(params.get("id"));
   renderArchive();
+}
+
+function renderFatalError(error) {
+  $app.innerHTML = `
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">I</span><span>Inspecto</span></div>
+      </header>
+      <main class="container">
+        <section class="empty">
+          <h2>Inspecto n'a pas pu charger</h2>
+          <p class="muted">Recharge la page. Si le probleme reste, voici l'erreur a corriger:</p>
+          <p class="error">${escapeHtml(error?.message || String(error))}</p>
+        </section>
+      </main>
+    </div>
+  `;
 }
 
 async function loadInspections() {
@@ -872,5 +897,7 @@ function formatDate(value) {
 }
 
 window.addEventListener("hashchange", render);
+window.addEventListener("error", (event) => renderFatalError(event.error || event.message));
+window.addEventListener("unhandledrejection", (event) => renderFatalError(event.reason));
 supabaseClient?.auth.onAuthStateChange(() => render());
 render();
