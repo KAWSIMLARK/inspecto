@@ -4,8 +4,21 @@ const SUPABASE_URL = "https://itabonpgzpokcdfcyhdx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0YWJvbnBnenBva2NkZmN5aGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjI3MDksImV4cCI6MjA5MzgzODcwOX0.FGR5Ol7H8Ln7zEhCG_gbKqfRL-lEoQg2BFPlCVGLwSs";
 const PHOTO_BUCKET = "inspection-photos";
 const REMEMBER_KEY = "inspecto.rememberSession";
+const DEFAULT_PROPERTY_TYPE = "single_family";
 const MAX_PHOTO_SIZE = 1600;
 const PHOTO_QUALITY = 0.78;
+
+const propertyTypes = [
+  ["unspecified", "Non precise"],
+  ["single_family", "Maison unifamiliale"],
+  ["condo", "Condo"],
+  ["duplex", "Duplex"],
+  ["triplex", "Triplex"],
+  ["multi_unit", "Multilogement"],
+  ["commercial", "Commercial"],
+  ["cottage", "Chalet"],
+  ["other", "Autre"],
+];
 
 const inspectionSchema = [
   {
@@ -105,7 +118,15 @@ const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     storage: adaptiveAuthStorage,
   },
 });
-const state = { user: null, inspections: [] };
+const state = {
+  user: null,
+  inspections: [],
+  propertyTypeFilter: "all",
+  newPropertyType: DEFAULT_PROPERTY_TYPE,
+  saveTimers: new Map(),
+  saveQueues: new Map(),
+  savingIds: new Set(),
+};
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 function getRememberPreference() {
@@ -151,7 +172,25 @@ function buildEmptyInspection() {
   });
 
   const now = new Date().toISOString();
-  return { id: uid(), address: "", createdAt: now, updatedAt: now, answers };
+  return {
+    id: uid(),
+    address: "",
+    propertyType: DEFAULT_PROPERTY_TYPE,
+    createdAt: now,
+    updatedAt: now,
+    answers,
+  };
+}
+
+function propertyTypeLabel(value) {
+  return propertyTypes.find(([key]) => key === value)?.[1] || "Non precise";
+}
+
+function renderPropertyTypeOptions(selected = DEFAULT_PROPERTY_TYPE, includeAll = false) {
+  const options = includeAll ? [["all", "Tous les types"], ...propertyTypes] : propertyTypes;
+  return options.map(([value, label]) => `
+    <option value="${value}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>
+  `).join("");
 }
 
 async function render() {
@@ -225,6 +264,7 @@ function fromDbInspection(row) {
     ...payload,
     id: row.id,
     address: row.address || payload.address || "",
+    propertyType: payload.propertyType || "unspecified",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     answers: { ...inspection.answers, ...(payload.answers || {}) },
@@ -232,7 +272,11 @@ function fromDbInspection(row) {
 }
 
 function toDbPayload(inspection) {
-  return { address: inspection.address, answers: inspection.answers };
+  return {
+    address: inspection.address,
+    propertyType: inspection.propertyType || DEFAULT_PROPERTY_TYPE,
+    answers: inspection.answers,
+  };
 }
 
 function renderSetupError(error) {
@@ -346,19 +390,36 @@ function renderTopbar(user) {
 }
 
 function bindTopbar() {
-  document.querySelector("#logoutBtn")?.addEventListener("click", async () => {
+  document.querySelector("#logoutBtn")?.addEventListener("click", async (event) => {
+    const saved = await runButtonAction(event.currentTarget, saveOpenFormIfPresent);
+    if (!saved) return;
     await supabaseClient.auth.signOut();
     location.hash = "";
     await render();
   });
-  document.querySelector("#archiveBtn")?.addEventListener("click", () => {
+  document.querySelector("#archiveBtn")?.addEventListener("click", async (event) => {
+    const saved = await runButtonAction(event.currentTarget, saveOpenFormIfPresent);
+    if (!saved) return;
     location.hash = "";
     render();
   });
 }
 
+async function saveOpenFormIfPresent() {
+  const form = document.querySelector("#inspectionForm");
+  if (!form) return;
+  const params = new URLSearchParams(location.hash.replace("#", ""));
+  const id = params.get("id");
+  if (!id) return;
+  await flushInspectionAutosave(id);
+  await saveInspectionFromForm(id);
+}
+
 function renderArchive() {
-  const inspections = [...state.inspections].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const filtered = state.propertyTypeFilter === "all"
+    ? state.inspections
+    : state.inspections.filter((inspection) => (inspection.propertyType || DEFAULT_PROPERTY_TYPE) === state.propertyTypeFilter);
+  const inspections = [...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   $app.innerHTML = `
     <div class="app-shell">
       ${renderTopbar(state.user)}
@@ -366,9 +427,19 @@ function renderArchive() {
         <section class="hero-row">
           <div>
             <h1>Archives d'inspection</h1>
-            <p>${inspections.length} dossier${inspections.length > 1 ? "s" : ""} lie${inspections.length > 1 ? "s" : ""} a ton profil.</p>
+            <p>${inspections.length} dossier${inspections.length > 1 ? "s" : ""} affiche${inspections.length > 1 ? "s" : ""} sur ${state.inspections.length} au total.</p>
           </div>
-          <button class="btn primary" id="newInspectionBtn">+ Nouvelle inspection</button>
+          <div class="archive-controls">
+            <label>
+              <span>Filtrer</span>
+              <select id="propertyTypeFilter">${renderPropertyTypeOptions(state.propertyTypeFilter, true)}</select>
+            </label>
+            <label>
+              <span>Nouveau dossier</span>
+              <select id="newPropertyType">${renderPropertyTypeOptions(state.newPropertyType)}</select>
+            </label>
+            <button class="btn primary" id="newInspectionBtn" type="button">+ Nouvelle inspection</button>
+          </div>
         </section>
         ${inspections.length ? `
           <section class="archive-grid">
@@ -376,15 +447,22 @@ function renderArchive() {
           </section>
         ` : `
           <section class="empty">
-            <h2>Aucune inspection enregistree</h2>
-            <p class="muted">Cree un premier dossier, ajoute l'adresse, tes notes et les photos question par question.</p>
+            <h2>${state.inspections.length ? "Aucune inspection pour ce filtre" : "Aucune inspection enregistree"}</h2>
+            <p class="muted">${state.inspections.length ? "Change le type de propriete filtre ou cree un nouveau dossier avec ce type." : "Cree un premier dossier, ajoute l'adresse, tes notes et les photos question par question."}</p>
           </section>
         `}
       </main>
     </div>
   `;
   bindTopbar();
-  document.querySelector("#newInspectionBtn").addEventListener("click", createInspection);
+  document.querySelector("#propertyTypeFilter").addEventListener("change", (event) => {
+    state.propertyTypeFilter = event.target.value;
+    renderArchive();
+  });
+  document.querySelector("#newPropertyType").addEventListener("change", (event) => {
+    state.newPropertyType = event.target.value;
+  });
+  document.querySelector("#newInspectionBtn").addEventListener("click", (event) => runButtonAction(event.currentTarget, createInspection));
   document.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
       location.hash = `view=form&id=${button.dataset.edit}`;
@@ -398,7 +476,7 @@ function renderArchive() {
     });
   });
   document.querySelectorAll("[data-delete]").forEach((button) => {
-    button.addEventListener("click", () => deleteInspection(button.dataset.delete));
+    button.addEventListener("click", (event) => runButtonAction(event.currentTarget, () => deleteInspection(button.dataset.delete)));
   });
 }
 
@@ -412,6 +490,7 @@ function renderInspectionCard(inspection) {
         <p class="muted">Modifie le ${formatDate(inspection.updatedAt)}</p>
       </div>
       <div class="card-meta">
+        <span class="badge">${escapeHtml(propertyTypeLabel(inspection.propertyType))}</span>
         <span class="badge">${completed}/28 elements</span>
         <span class="badge">${photos} photo${photos > 1 ? "s" : ""}</span>
       </div>
@@ -426,6 +505,7 @@ function renderInspectionCard(inspection) {
 
 async function createInspection() {
   const inspection = buildEmptyInspection();
+  inspection.propertyType = state.newPropertyType || DEFAULT_PROPERTY_TYPE;
   const { data, error } = await supabaseClient
     .from("inspections")
     .insert({
@@ -479,6 +559,7 @@ function renderDetail(id) {
           </div>
         </section>
         <section class="summary-strip">
+          <span class="badge">${escapeHtml(propertyTypeLabel(inspection.propertyType))}</span>
           <span class="badge">${completed}/28 elements documentes</span>
           <span class="badge">${photos} photo${photos > 1 ? "s" : ""}</span>
         </section>
@@ -518,7 +599,7 @@ function renderDetailQuestion([title, help], categoryIndex, itemIndex, inspectio
   return `
     <article class="question detail-question">
       <div class="detail-heading">
-        <span class="status-dot ${answer.ok ? "done" : ""}">${answer.ok ? "✓" : "-"}</span>
+        <span class="status-dot ${answer.ok ? "done" : ""}">${answer.ok ? "OK" : "-"}</span>
         <div>
           <p class="question-title">${escapeHtml(title)}</p>
           <p class="question-help">${escapeHtml(help)}</p>
@@ -552,7 +633,7 @@ function renderForm(id) {
         <section class="hero-row">
           <div>
             <h1>Formulaire d'inspection</h1>
-            <p>Les changements sont sauvegardes a l'ajout d'une photo et lorsque tu cliques sur Enregistrer.</p>
+            <p>Les changements sont sauvegardes automatiquement pendant que tu travailles.</p>
           </div>
         </section>
         <form id="inspectionForm" class="form-shell">
@@ -571,10 +652,15 @@ function renderForm(id) {
                   <label for="address">Adresse</label>
                   <input id="address" value="${escapeHtml(inspection.address)}" placeholder="123 rue Principale, Montreal" required />
                 </div>
+                <div class="field">
+                  <label for="propertyType">Type de propriete</label>
+                  <select id="propertyType">${renderPropertyTypeOptions(inspection.propertyType || DEFAULT_PROPERTY_TYPE)}</select>
+                </div>
               </div>
             </div>
             ${inspectionSchema.map((category, categoryIndex) => renderCategory(category, categoryIndex, inspection)).join("")}
             <div class="form-actions">
+              <span class="save-status" id="saveStatus">Pret</span>
               <button class="btn ghost" type="button" id="cancelBtn">Retour aux archives</button>
               <button class="btn primary" type="submit">Enregistrer l'inspection</button>
             </div>
@@ -635,6 +721,7 @@ function renderQuestion([title, help], categoryIndex, itemIndex, inspection) {
 }
 
 function bindForm(inspectionId) {
+  const form = document.querySelector("#inspectionForm");
   document.querySelectorAll("[data-jump]").forEach((button) => {
     button.addEventListener("click", () => {
       document.querySelectorAll("[data-jump]").forEach((item) => item.classList.remove("active"));
@@ -643,9 +730,17 @@ function bindForm(inspectionId) {
     });
   });
 
-  document.querySelector("#cancelBtn").addEventListener("click", () => {
+  form.addEventListener("input", () => scheduleInspectionAutosave(inspectionId));
+  form.addEventListener("change", () => scheduleInspectionAutosave(inspectionId));
+
+  document.querySelector("#cancelBtn").addEventListener("click", async (event) => {
+    const saved = await runButtonAction(event.currentTarget, async () => {
+      await flushInspectionAutosave(inspectionId);
+      await saveInspectionFromForm(inspectionId);
+    });
+    if (!saved) return;
     location.hash = "";
-    render();
+    await render();
   });
 
   document.querySelectorAll("[data-photo-input]").forEach((input) => {
@@ -669,6 +764,7 @@ function bindForm(inspectionId) {
   document.querySelectorAll("[data-remove-photo]").forEach((button) => {
     button.addEventListener("click", async () => {
       const [key, index] = button.dataset.removePhoto.split(":");
+      await flushInspectionAutosave(inspectionId);
       await saveInspectionFromForm(inspectionId);
       const inspection = findInspection(inspectionId);
       inspection.answers[key].photos.splice(Number(index), 1);
@@ -679,40 +775,88 @@ function bindForm(inspectionId) {
 
   document.querySelector("#inspectionForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    await saveInspectionFromForm(inspectionId);
-    location.hash = `view=detail&id=${inspectionId}`;
-    await render();
+    await runButtonAction(event.submitter, async () => {
+      await flushInspectionAutosave(inspectionId);
+      await saveInspectionFromForm(inspectionId);
+      location.hash = `view=detail&id=${inspectionId}`;
+      await render();
+    });
   });
 }
 
-async function saveInspectionFromForm(inspectionId) {
+function scheduleInspectionAutosave(inspectionId) {
+  clearTimeout(state.saveTimers.get(inspectionId));
+  setSaveStatus("Sauvegarde en attente...");
+  state.saveTimers.set(inspectionId, setTimeout(async () => {
+    state.saveTimers.delete(inspectionId);
+    try {
+      await saveInspectionFromForm(inspectionId, { silent: true });
+      setSaveStatus("Sauvegarde automatique faite");
+    } catch (error) {
+      setSaveStatus("Sauvegarde echouee");
+      showToast(error.message || "La sauvegarde automatique a echoue.");
+    }
+  }, 900));
+}
+
+async function flushInspectionAutosave(inspectionId) {
+  const timer = state.saveTimers.get(inspectionId);
+  if (!timer) return;
+  clearTimeout(timer);
+  state.saveTimers.delete(inspectionId);
+}
+
+async function saveInspectionFromForm(inspectionId, options = {}) {
   const form = document.querySelector("#inspectionForm");
   if (!form) return;
   const inspection = findInspection(inspectionId);
+  if (!inspection) throw new Error("Inspection introuvable.");
   inspection.address = document.querySelector("#address").value.trim();
+  inspection.propertyType = document.querySelector("#propertyType")?.value || DEFAULT_PROPERTY_TYPE;
   document.querySelectorAll("[data-question]").forEach((question) => {
     const key = question.dataset.question;
     inspection.answers[key].ok = question.querySelector('[data-field="ok"]').checked;
     inspection.answers[key].note = question.querySelector('[data-field="note"]').value.trim();
   });
+  if (!options.silent) setSaveStatus("Sauvegarde...");
   await saveInspection(inspection);
+  if (!options.silent) setSaveStatus("Sauvegarde faite");
 }
 
 async function saveInspection(inspection) {
-  const { data, error } = await supabaseClient
-    .from("inspections")
-    .update({
-      address: inspection.address,
-      payload: toDbPayload(inspection),
-      updated_at: new Date().toISOString(),
+  const snapshot = JSON.parse(JSON.stringify({
+    id: inspection.id,
+    address: inspection.address,
+    propertyType: inspection.propertyType || DEFAULT_PROPERTY_TYPE,
+    answers: inspection.answers,
+  }));
+  const previous = state.saveQueues.get(inspection.id) || Promise.resolve();
+  const next = previous
+    .catch(() => {})
+    .then(async () => {
+      state.savingIds.add(inspection.id);
+      const { data, error } = await supabaseClient
+        .from("inspections")
+        .update({
+          address: snapshot.address,
+          payload: toDbPayload(snapshot),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", snapshot.id)
+        .select()
+        .single();
+      if (error) throw error;
+      const updated = fromDbInspection(data);
+      const index = state.inspections.findIndex((candidate) => candidate.id === inspection.id);
+      if (index >= 0) state.inspections[index] = updated;
+      return updated;
     })
-    .eq("id", inspection.id)
-    .select()
-    .single();
-  if (error) throw error;
-  const updated = fromDbInspection(data);
-  const index = state.inspections.findIndex((candidate) => candidate.id === inspection.id);
-  if (index >= 0) state.inspections[index] = updated;
+    .finally(() => {
+      state.savingIds.delete(inspection.id);
+      if (state.saveQueues.get(inspection.id) === next) state.saveQueues.delete(inspection.id);
+    });
+  state.saveQueues.set(inspection.id, next);
+  return next;
 }
 
 async function fileToPhoto(file) {
@@ -769,6 +913,7 @@ function buildNotionMarkdown(inspection) {
   const lines = [
     `# Inspection - ${inspection.address || "Adresse a completer"}`,
     "",
+    `**Type de propriete:** ${propertyTypeLabel(inspection.propertyType)}`,
     `**Cree le:** ${formatDate(inspection.createdAt)}`,
     `**Modifie le:** ${formatDate(inspection.updatedAt)}`,
     "",
@@ -861,6 +1006,7 @@ function buildPdfHtml(inspection) {
       <h1>Rapport d'inspection</h1>
       <p class="meta">
         <strong>Adresse:</strong> ${escapeHtml(inspection.address || "Adresse a completer")}<br />
+        <strong>Type de propriete:</strong> ${escapeHtml(propertyTypeLabel(inspection.propertyType))}<br />
         <strong>Cree le:</strong> ${formatDate(inspection.createdAt)}<br />
         <strong>Modifie le:</strong> ${formatDate(inspection.updatedAt)}
       </p>
@@ -950,6 +1096,34 @@ function showToast(message) {
   }, 2600);
 }
 
+function setSaveStatus(message) {
+  const status = document.querySelector("#saveStatus");
+  if (status) status.textContent = message;
+}
+
+async function runButtonAction(button, action) {
+  const target = button instanceof HTMLElement ? button : null;
+  const originalText = target?.textContent;
+  try {
+    if (target) {
+      target.disabled = true;
+      target.setAttribute("aria-busy", "true");
+      if (target.classList.contains("primary")) target.textContent = "Traitement...";
+    }
+    await action();
+    return true;
+  } catch (error) {
+    showToast(error.message || "Action impossible pour le moment.");
+    return false;
+  } finally {
+    if (target) {
+      target.disabled = false;
+      target.removeAttribute("aria-busy");
+      if (originalText) target.textContent = originalText;
+    }
+  }
+}
+
 function formatDate(value) {
   return new Intl.DateTimeFormat("fr-CA", {
     dateStyle: "medium",
@@ -964,5 +1138,9 @@ window.addEventListener("error", (event) => {
 window.addEventListener("unhandledrejection", (event) => {
   console.error(event.reason);
 });
-supabaseClient?.auth.onAuthStateChange(() => render());
+supabaseClient?.auth.onAuthStateChange((event) => {
+  if (event === "SIGNED_OUT") render();
+  if (event === "SIGNED_IN" && !state.user) render();
+  if (event === "USER_UPDATED") render();
+});
 render();
