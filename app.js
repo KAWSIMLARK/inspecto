@@ -5,6 +5,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const PHOTO_BUCKET = "inspection-photos";
 const REMEMBER_KEY = "inspecto.rememberSession";
 const DEFAULT_PROPERTY_TYPE = "single_family";
+const SIGNED_PHOTO_URL_TTL = 60 * 60 * 24;
 const MAX_PHOTO_SIZE = 1600;
 const PHOTO_QUALITY = 0.78;
 
@@ -91,6 +92,7 @@ const inspectionSchema = [
   },
 ];
 
+const TOTAL_INSPECTION_ITEMS = inspectionSchema.reduce((sum, category) => sum + category.items.length, 0);
 const $app = document.querySelector("#app");
 const adaptiveAuthStorage = {
   getItem(key) {
@@ -193,6 +195,37 @@ function renderPropertyTypeOptions(selected = DEFAULT_PROPERTY_TYPE, includeAll 
   `).join("");
 }
 
+function getInspectionMetrics(inspection) {
+  const answers = Object.values(inspection.answers || {});
+  const completed = answers.filter((answer) => answer.ok || answer.note || answer.photos.length).length;
+  const checked = answers.filter((answer) => answer.ok).length;
+  const notes = answers.filter((answer) => answer.note).length;
+  const photos = answers.reduce((sum, answer) => sum + answer.photos.length, 0);
+  const progress = TOTAL_INSPECTION_ITEMS ? Math.round((completed / TOTAL_INSPECTION_ITEMS) * 100) : 0;
+  return { completed, checked, notes, photos, progress };
+}
+
+function getCategoryMetrics(categoryIndex, inspection) {
+  const category = inspectionSchema[categoryIndex];
+  const answers = category.items.map((_, itemIndex) => inspection.answers[`${categoryIndex}-${itemIndex}`] || { ok: false, note: "", photos: [] });
+  const completed = answers.filter((answer) => answer.ok || answer.note || answer.photos.length).length;
+  const photos = answers.reduce((sum, answer) => sum + answer.photos.length, 0);
+  return { completed, total: category.items.length, photos };
+}
+
+function getArchiveMetrics(allInspections, visibleInspections) {
+  const visible = visibleInspections.length;
+  const totalPhotos = allInspections.reduce((sum, inspection) => sum + getInspectionMetrics(inspection).photos, 0);
+  const averageProgress = allInspections.length
+    ? Math.round(allInspections.reduce((sum, inspection) => sum + getInspectionMetrics(inspection).progress, 0) / allInspections.length)
+    : 0;
+  const activeThisWeek = allInspections.filter((inspection) => {
+    const updated = new Date(inspection.updatedAt).getTime();
+    return Date.now() - updated < 7 * 24 * 60 * 60 * 1000;
+  }).length;
+  return { visible, total: allInspections.length, totalPhotos, averageProgress, activeThisWeek };
+}
+
 async function render() {
   try {
     await renderApp();
@@ -233,7 +266,7 @@ function renderFatalError(error) {
           <h2>Inspecto n'a pas pu charger</h2>
           <p class="muted">Recharge la page. Si le probleme reste, voici l'erreur a corriger:</p>
           <p class="error">${escapeHtml(error?.message || String(error))}</p>
-          <button class="btn primary" type="button" onclick="inspectoClearCache()">Vider le cache et recommencer</button>
+          <button class="btn primary" type="button" data-clear-cache>Vider le cache et recommencer</button>
         </section>
       </main>
     </div>
@@ -252,8 +285,20 @@ async function loadInspections() {
     return false;
   }
 
-  state.inspections = data.map(fromDbInspection);
+  state.inspections = await Promise.all(data.map(async (row) => hydrateInspectionPhotos(fromDbInspection(row))));
   return true;
+}
+
+async function hydrateInspectionPhotos(inspection) {
+  const photos = Object.values(inspection.answers).flatMap((answer) => answer.photos || []);
+  await Promise.all(photos.map(async (photo) => {
+    if (!photo.path) return;
+    const { data, error } = await supabaseClient.storage
+      .from(PHOTO_BUCKET)
+      .createSignedUrl(photo.path, SIGNED_PHOTO_URL_TTL);
+    if (!error && data?.signedUrl) photo.data = data.signedUrl;
+  }));
+  return inspection;
 }
 
 function fromDbInspection(row) {
@@ -289,7 +334,7 @@ function renderSetupError(error) {
           <p class="muted">La connexion fonctionne, mais la table ou le bucket n'est pas encore cree.</p>
           <p class="error">${escapeHtml(error.message)}</p>
           <p>Ouvre Supabase, va dans <strong>SQL Editor</strong>, puis execute le fichier <strong>supabase-schema.sql</strong> du projet.</p>
-          <button class="btn ghost" type="button" onclick="inspectoClearCache()">Vider le cache</button>
+          <button class="btn ghost" type="button" data-clear-cache>Vider le cache</button>
         </section>
       </main>
     </div>
@@ -333,7 +378,7 @@ function renderAuth(mode = "login", message = "") {
               <button class="btn primary full" type="submit">${mode === "login" ? "Se connecter" : "Creer le compte"}</button>
               ${message ? `<div class="error">${escapeHtml(message)}</div>` : ""}
               <p class="muted">Les comptes, inspections et photos sont synchronises avec Supabase.</p>
-              <button class="btn ghost full" type="button" onclick="inspectoClearCache()">Vider le cache de connexion</button>
+              <button class="btn ghost full" type="button" data-clear-cache>Vider le cache de connexion</button>
             </form>
           </div>
         </div>
@@ -420,12 +465,14 @@ function renderArchive() {
     ? state.inspections
     : state.inspections.filter((inspection) => (inspection.propertyType || DEFAULT_PROPERTY_TYPE) === state.propertyTypeFilter);
   const inspections = [...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const archiveMetrics = getArchiveMetrics(state.inspections, inspections);
   $app.innerHTML = `
     <div class="app-shell">
       ${renderTopbar(state.user)}
       <main class="container">
         <section class="hero-row">
           <div>
+            <span class="eyebrow">Registre synchronise</span>
             <h1>Archives d'inspection</h1>
             <p>${inspections.length} dossier${inspections.length > 1 ? "s" : ""} affiche${inspections.length > 1 ? "s" : ""} sur ${state.inspections.length} au total.</p>
           </div>
@@ -441,9 +488,22 @@ function renderArchive() {
             <button class="btn primary" id="newInspectionBtn" type="button">+ Nouvelle inspection</button>
           </div>
         </section>
+        ${renderOpsStrip(archiveMetrics)}
         ${inspections.length ? `
-          <section class="archive-grid">
-            ${inspections.map((inspection) => renderInspectionCard(inspection)).join("")}
+          <section class="archive-workspace">
+            <div class="archive-main">
+              <div class="workspace-heading">
+                <div>
+                  <span class="eyebrow">Dossiers</span>
+                  <h2>File de travail</h2>
+                </div>
+                <span class="muted">${state.propertyTypeFilter === "all" ? "Tous les types" : propertyTypeLabel(state.propertyTypeFilter)}</span>
+              </div>
+              <div class="archive-grid">
+                ${inspections.map((inspection) => renderInspectionCard(inspection)).join("")}
+              </div>
+            </div>
+            ${renderPropertyTypeRail(state.inspections)}
           </section>
         ` : `
           <section class="empty">
@@ -463,6 +523,12 @@ function renderArchive() {
     state.newPropertyType = event.target.value;
   });
   document.querySelector("#newInspectionBtn").addEventListener("click", (event) => runButtonAction(event.currentTarget, createInspection));
+  document.querySelectorAll("[data-filter-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.propertyTypeFilter = button.dataset.filterType;
+      renderArchive();
+    });
+  });
   document.querySelectorAll("[data-edit]").forEach((button) => {
     button.addEventListener("click", () => {
       location.hash = `view=form&id=${button.dataset.edit}`;
@@ -480,19 +546,67 @@ function renderArchive() {
   });
 }
 
+function renderOpsStrip(metrics) {
+  const items = [
+    ["Dossiers visibles", metrics.visible, `${metrics.total} au total`],
+    ["Photos archivees", metrics.totalPhotos, "Annexes PDF incluses"],
+    ["Progression moyenne", `${metrics.averageProgress}%`, `${TOTAL_INSPECTION_ITEMS} points par dossier`],
+    ["Actifs 7 jours", metrics.activeThisWeek, "Dernieres interventions"],
+  ];
+  return `
+    <section class="ops-strip" aria-label="Etat des archives">
+      ${items.map(([label, value, detail]) => `
+        <article class="metric-tile">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+          <small>${escapeHtml(detail)}</small>
+        </article>
+      `).join("")}
+    </section>
+  `;
+}
+
+function renderPropertyTypeRail(inspections) {
+  const rows = [["all", "Tous les types"], ...propertyTypes].map(([type, label]) => {
+    const count = type === "all"
+      ? inspections.length
+      : inspections.filter((inspection) => (inspection.propertyType || DEFAULT_PROPERTY_TYPE) === type).length;
+    const active = state.propertyTypeFilter === type ? "active" : "";
+    return `
+      <button class="${active}" type="button" data-filter-type="${type}">
+        <span>${escapeHtml(label)}</span>
+        <strong>${count}</strong>
+      </button>
+    `;
+  }).join("");
+  return `
+    <aside class="ops-rail">
+      <div class="workspace-heading compact">
+        <div>
+          <span class="eyebrow">Tri rapide</span>
+          <h2>Types</h2>
+        </div>
+      </div>
+      <div class="type-list">${rows}</div>
+    </aside>
+  `;
+}
+
 function renderInspectionCard(inspection) {
-  const completed = Object.values(inspection.answers).filter((answer) => answer.ok || answer.note || answer.photos.length).length;
-  const photos = Object.values(inspection.answers).reduce((sum, answer) => sum + answer.photos.length, 0);
+  const metrics = getInspectionMetrics(inspection);
   return `
     <article class="inspection-card">
       <div>
         <h2 class="card-title">${escapeHtml(inspection.address || "Adresse a completer")}</h2>
         <p class="muted">Modifie le ${formatDate(inspection.updatedAt)}</p>
       </div>
+      <div class="progress-meter" aria-label="Progression ${metrics.progress}%">
+        <span style="width:${metrics.progress}%"></span>
+      </div>
       <div class="card-meta">
         <span class="badge">${escapeHtml(propertyTypeLabel(inspection.propertyType))}</span>
-        <span class="badge">${completed}/28 elements</span>
-        <span class="badge">${photos} photo${photos > 1 ? "s" : ""}</span>
+        <span class="badge">${metrics.completed}/${TOTAL_INSPECTION_ITEMS} elements</span>
+        <span class="badge">${metrics.photos} photo${metrics.photos > 1 ? "s" : ""}</span>
       </div>
       <div class="topbar-actions">
         <button class="btn ghost" data-view="${inspection.id}">Consulter</button>
@@ -539,8 +653,7 @@ function renderDetail(id) {
     return renderArchive();
   }
 
-  const completed = Object.values(inspection.answers).filter((answer) => answer.ok || answer.note || answer.photos.length).length;
-  const photos = Object.values(inspection.answers).reduce((sum, answer) => sum + answer.photos.length, 0);
+  const metrics = getInspectionMetrics(inspection);
 
   $app.innerHTML = `
     <div class="app-shell">
@@ -558,10 +671,23 @@ function renderDetail(id) {
             <button class="btn primary" id="editFromDetailBtn">Modifier</button>
           </div>
         </section>
-        <section class="summary-strip">
-          <span class="badge">${escapeHtml(propertyTypeLabel(inspection.propertyType))}</span>
-          <span class="badge">${completed}/28 elements documentes</span>
-          <span class="badge">${photos} photo${photos > 1 ? "s" : ""}</span>
+        <section class="summary-strip detail-summary">
+          <article>
+            <span>Type</span>
+            <strong>${escapeHtml(propertyTypeLabel(inspection.propertyType))}</strong>
+          </article>
+          <article>
+            <span>Progression</span>
+            <strong>${metrics.completed}/${TOTAL_INSPECTION_ITEMS}</strong>
+          </article>
+          <article>
+            <span>Photos</span>
+            <strong>${metrics.photos}</strong>
+          </article>
+          <article>
+            <span>Notes</span>
+            <strong>${metrics.notes}</strong>
+          </article>
         </section>
         <section class="detail-content">
           ${inspectionSchema.map((category, categoryIndex) => renderDetailCategory(category, categoryIndex, inspection)).join("")}
@@ -625,6 +751,7 @@ function renderForm(id) {
     location.hash = "";
     return renderArchive();
   }
+  const metrics = getInspectionMetrics(inspection);
 
   $app.innerHTML = `
     <div class="app-shell">
@@ -632,16 +759,26 @@ function renderForm(id) {
       <main class="container">
         <section class="hero-row">
           <div>
+            <span class="eyebrow">Saisie terrain</span>
             <h1>Formulaire d'inspection</h1>
             <p>Les changements sont sauvegardes automatiquement pendant que tu travailles.</p>
+          </div>
+          <div class="form-head-metrics">
+            <span>${metrics.completed}/${TOTAL_INSPECTION_ITEMS} documentes</span>
+            <strong>${metrics.photos} photo${metrics.photos > 1 ? "s" : ""}</strong>
           </div>
         </section>
         <form id="inspectionForm" class="form-shell">
           <nav class="side-nav">
+            <div class="side-progress">
+              <span>Progression</span>
+              <strong>${metrics.progress}%</strong>
+              <div class="progress-meter"><span style="width:${metrics.progress}%"></span></div>
+            </div>
             ${inspectionSchema.map((category, index) => `
               <button type="button" data-jump="${index}" class="${index === 0 ? "active" : ""}">
                 <span>${index + 1}. ${escapeHtml(category.title)}</span>
-                <span>${category.items.length}</span>
+                <span>${getCategoryMetrics(index, inspection).completed}/${category.items.length}</span>
               </button>
             `).join("")}
           </nav>
@@ -674,11 +811,12 @@ function renderForm(id) {
 }
 
 function renderCategory(category, categoryIndex, inspection) {
+  const metrics = getCategoryMetrics(categoryIndex, inspection);
   return `
     <section class="category" id="cat-${categoryIndex}">
       <header class="category-header">
         <h2>${categoryIndex + 1}) ${escapeHtml(category.title)}</h2>
-        <span class="badge">${category.items.length} points</span>
+        <span class="badge">${metrics.completed}/${metrics.total} points - ${metrics.photos} photo${metrics.photos > 1 ? "s" : ""}</span>
       </header>
       ${category.items.map((item, itemIndex) => renderQuestion(item, categoryIndex, itemIndex, inspection)).join("")}
     </section>
@@ -688,8 +826,9 @@ function renderCategory(category, categoryIndex, inspection) {
 function renderQuestion([title, help], categoryIndex, itemIndex, inspection) {
   const key = `${categoryIndex}-${itemIndex}`;
   const answer = inspection.answers[key] || { ok: false, note: "", photos: [] };
+  const isDocumented = answer.ok || answer.note || answer.photos.length;
   return `
-    <article class="question" data-question="${key}">
+    <article class="question ${isDocumented ? "documented" : ""}" data-question="${key}">
       <div class="question-top">
         <input class="check" type="checkbox" data-field="ok" ${answer.ok ? "checked" : ""} aria-label="Point inspecte" />
         <div>
@@ -704,7 +843,7 @@ function renderQuestion([title, help], categoryIndex, itemIndex, inspection) {
       <div class="photo-tools">
         <span class="section-label">Photos</span>
         <label class="btn file-button">
-          Ajouter
+          Ajouter photos
           <input type="file" accept="image/*" multiple data-photo-input="${key}" />
         </label>
       </div>
@@ -846,7 +985,7 @@ async function saveInspection(inspection) {
         .select()
         .single();
       if (error) throw error;
-      const updated = fromDbInspection(data);
+      const updated = await hydrateInspectionPhotos(fromDbInspection(data));
       const index = state.inspections.findIndex((candidate) => candidate.id === inspection.id);
       if (index >= 0) state.inspections[index] = updated;
       return updated;
@@ -868,8 +1007,9 @@ async function fileToPhoto(file) {
     upsert: false,
   });
   if (error) throw error;
-  const { data } = supabaseClient.storage.from(PHOTO_BUCKET).getPublicUrl(path);
-  return { id: uid(), name: file.name, path, data: data.publicUrl };
+  const signed = await supabaseClient.storage.from(PHOTO_BUCKET).createSignedUrl(path, SIGNED_PHOTO_URL_TTL);
+  if (signed.error) throw signed.error;
+  return { id: uid(), name: file.name, path, data: signed.data.signedUrl };
 }
 
 function resizeImage(file) {
@@ -939,6 +1079,7 @@ function exportInspectionPdf(inspection) {
   printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
+  printWindow.document.querySelector("#printBtn")?.addEventListener("click", () => printWindow.print());
   setTimeout(() => printWindow.focus(), 50);
   showToast("Rapport PDF pret dans un nouvel onglet.");
 }
@@ -1002,7 +1143,7 @@ function buildPdfHtml(inspection) {
   </head>
   <body>
     <main>
-      <div class="print-actions"><button onclick="window.print()">Enregistrer en PDF</button></div>
+      <div class="print-actions"><button id="printBtn" type="button">Enregistrer en PDF</button></div>
       <h1>Rapport d'inspection</h1>
       <p class="meta">
         <strong>Adresse:</strong> ${escapeHtml(inspection.address || "Adresse a completer")}<br />

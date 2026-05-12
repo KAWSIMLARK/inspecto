@@ -35,8 +35,8 @@ to authenticated
 using (auth.uid() = user_id);
 
 insert into storage.buckets (id, name, public)
-values ('inspection-photos', 'inspection-photos', true)
-on conflict (id) do update set public = true;
+values ('inspection-photos', 'inspection-photos', false)
+on conflict (id) do update set public = false;
 
 drop policy if exists "Users can view inspection photos" on storage.objects;
 create policy "Users can view inspection photos"

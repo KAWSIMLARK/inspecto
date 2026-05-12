@@ -4,6 +4,8 @@
   --surface: #f8faf7;
   --surface-strong: #ffffff;
   --surface-muted: #edf2ec;
+  --surface-ink: #213029;
+  --steel: #31576a;
   --ink: #17221d;
   --muted: #65736b;
   --muted-strong: #435149;
@@ -40,7 +42,7 @@ body {
   background:
     linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px),
     linear-gradient(180deg, var(--bg-grid) 1px, transparent 1px),
-    radial-gradient(circle at 14% 6%, rgba(184, 101, 59, 0.08), transparent 28rem),
+    linear-gradient(135deg, rgba(49, 87, 106, 0.08), transparent 44%),
     var(--bg);
   background-size: 28px 28px, 28px 28px, auto, auto;
 }
@@ -419,9 +421,10 @@ select:focus-visible {
   margin-bottom: 18px;
   padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background:
-    linear-gradient(90deg, rgba(31, 104, 77, 0.08), transparent 40%),
+    linear-gradient(90deg, rgba(31, 104, 77, 0.11), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 245, 240, 0.82)),
     rgba(255, 255, 255, 0.74);
 }
 
@@ -435,6 +438,17 @@ select:focus-visible {
 .hero-row p {
   margin: 0;
   color: var(--muted);
+}
+
+.eyebrow {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .archive-controls {
@@ -471,6 +485,74 @@ select:focus-visible {
   background: rgba(255, 255, 255, 0.58);
 }
 
+.ops-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.metric-tile {
+  min-height: 112px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.metric-tile span,
+.metric-tile small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metric-tile strong {
+  display: block;
+  margin: 10px 0 8px;
+  color: var(--surface-ink);
+  font-family: var(--mono);
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1;
+}
+
+.archive-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 14px;
+  align-items: start;
+}
+
+.archive-main,
+.ops-rail {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.archive-main {
+  padding: 12px;
+}
+
+.workspace-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px 14px;
+}
+
+.workspace-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.workspace-heading.compact {
+  padding: 14px 14px 8px;
+}
+
 .archive-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -481,6 +563,7 @@ select:focus-visible {
   display: grid;
   gap: 14px;
   padding: 16px;
+  min-height: 190px;
   transition:
     transform 140ms ease,
     border-color 140ms ease,
@@ -491,6 +574,56 @@ select:focus-visible {
   border-color: var(--line-strong);
   box-shadow: 0 14px 32px rgba(23, 34, 29, 0.1);
   transform: translateY(-2px);
+}
+
+.progress-meter {
+  overflow: hidden;
+  width: 100%;
+  height: 8px;
+  border: 1px solid rgba(31, 104, 77, 0.12);
+  border-radius: 999px;
+  background: rgba(31, 104, 77, 0.08);
+}
+
+.progress-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand), var(--steel));
+}
+
+.ops-rail {
+  position: sticky;
+  top: 76px;
+  overflow: hidden;
+}
+
+.type-list {
+  display: grid;
+}
+
+.type-list button {
+  display: flex;
+  min-height: 43px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 13px;
+  font-weight: 850;
+  text-align: left;
+}
+
+.type-list button:hover,
+.type-list button.active {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
+.type-list strong {
+  font-family: var(--mono);
 }
 
 .card-title {
@@ -509,6 +642,36 @@ select:focus-visible {
 .summary-strip {
   margin: 0 0 14px;
   padding: 0 2px;
+}
+
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0;
+}
+
+.detail-summary article {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.detail-summary span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.detail-summary strong {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 18px;
 }
 
 .badge {
@@ -544,12 +707,53 @@ select:focus-visible {
   align-items: start;
 }
 
+.form-head-metrics {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.form-head-metrics span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.form-head-metrics strong {
+  font-family: var(--mono);
+  font-size: 20px;
+}
+
 .side-nav {
   position: sticky;
   top: 76px;
   display: grid;
   gap: 4px;
   padding: 8px;
+}
+
+.side-progress {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.side-progress span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.side-progress strong {
+  font-family: var(--mono);
+  font-size: 24px;
 }
 
 .side-nav button {
@@ -608,6 +812,10 @@ select:focus-visible {
   padding: 16px;
   border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.44);
+}
+
+.question.documented {
+  box-shadow: 4px 0 0 rgba(31, 104, 77, 0.56) inset;
 }
 
 .question:nth-child(even) {
@@ -843,8 +1051,14 @@ select:focus-visible {
 @media (max-width: 900px) {
   .auth-layout,
   .form-shell,
-  .hero-row {
+  .hero-row,
+  .archive-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .ops-strip,
+  .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .auth-visual {
@@ -856,6 +1070,10 @@ select:focus-visible {
   }
 
   .side-nav {
+    position: static;
+  }
+
+  .ops-rail {
     position: static;
   }
 }
@@ -873,8 +1091,14 @@ select:focus-visible {
   .topbar-actions,
   .btn,
   .archive-controls,
-  .archive-controls label {
+  .archive-controls label,
+  .form-head-metrics {
     width: 100%;
+  }
+
+  .ops-strip,
+  .detail-summary {
+    grid-template-columns: 1fr;
   }
 
   .user-chip {
