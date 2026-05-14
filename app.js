@@ -3,8 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = "https://itabonpgzpokcdfcyhdx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0YWJvbnBnenBva2NkZmN5aGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjI3MDksImV4cCI6MjA5MzgzODcwOX0.FGR5Ol7H8Ln7zEhCG_gbKqfRL-lEoQg2BFPlCVGLwSs";
 const PHOTO_BUCKET = "inspection-photos";
+const BRAND_NAME = "Construction Habiko";
+const PRODUCT_NAME = "Inspecto";
+const BRAND_LOGO_SRC = "assets/habiko-logo.png";
 const REMEMBER_KEY = "inspecto.rememberSession";
+const DRAFT_PREFIX = "inspecto.draft";
 const DEFAULT_PROPERTY_TYPE = "single_family";
+const DEFAULT_INSPECTION_STATUS = "draft";
 const SIGNED_PHOTO_URL_TTL = 60 * 60 * 24;
 const MAX_PHOTO_SIZE = 1600;
 const PHOTO_QUALITY = 0.78;
@@ -19,6 +24,15 @@ const propertyTypes = [
   ["commercial", "Commercial"],
   ["cottage", "Chalet"],
   ["other", "Autre"],
+];
+
+const inspectionStatuses = [
+  ["all", "Tous les statuts"],
+  ["draft", "Brouillon"],
+  ["in_progress", "En cours"],
+  ["review", "A reviser"],
+  ["completed", "Complete"],
+  ["exported", "Exporte"],
 ];
 
 const inspectionSchema = [
@@ -124,6 +138,8 @@ const state = {
   user: null,
   inspections: [],
   propertyTypeFilter: "all",
+  statusFilter: "all",
+  searchQuery: "",
   newPropertyType: DEFAULT_PROPERTY_TYPE,
   saveTimers: new Map(),
   saveQueues: new Map(),
@@ -138,6 +154,10 @@ function getRememberPreference() {
 function setRememberPreference(remember) {
   if (remember) localStorage.setItem(REMEMBER_KEY, "true");
   else localStorage.removeItem(REMEMBER_KEY);
+}
+
+function getDraftStorage() {
+  return getRememberPreference() ? localStorage : sessionStorage;
 }
 
 window.inspectoClearCache = async function inspectoClearCache() {
@@ -165,6 +185,18 @@ function escapeHtml(value = "") {
   })[char]);
 }
 
+function renderBrand(variant = "compact") {
+  return `
+    <div class="brand brand-${variant}">
+      <img class="brand-logo" src="${BRAND_LOGO_SRC}" alt="${BRAND_NAME}" />
+      <span class="brand-copy">
+        <strong>${PRODUCT_NAME}</strong>
+        <small>${BRAND_NAME}</small>
+      </span>
+    </div>
+  `;
+}
+
 function buildEmptyInspection() {
   const answers = {};
   inspectionSchema.forEach((category, categoryIndex) => {
@@ -178,6 +210,7 @@ function buildEmptyInspection() {
     id: uid(),
     address: "",
     propertyType: DEFAULT_PROPERTY_TYPE,
+    status: DEFAULT_INSPECTION_STATUS,
     createdAt: now,
     updatedAt: now,
     answers,
@@ -190,6 +223,17 @@ function propertyTypeLabel(value) {
 
 function renderPropertyTypeOptions(selected = DEFAULT_PROPERTY_TYPE, includeAll = false) {
   const options = includeAll ? [["all", "Tous les types"], ...propertyTypes] : propertyTypes;
+  return options.map(([value, label]) => `
+    <option value="${value}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>
+  `).join("");
+}
+
+function statusLabel(value) {
+  return inspectionStatuses.find(([key]) => key === value)?.[1] || "Brouillon";
+}
+
+function renderStatusOptions(selected = DEFAULT_INSPECTION_STATUS, includeAll = false) {
+  const options = includeAll ? inspectionStatuses : inspectionStatuses.filter(([value]) => value !== "all");
   return options.map(([value, label]) => `
     <option value="${value}" ${value === selected ? "selected" : ""}>${escapeHtml(label)}</option>
   `).join("");
@@ -223,7 +267,86 @@ function getArchiveMetrics(allInspections, visibleInspections) {
     const updated = new Date(inspection.updatedAt).getTime();
     return Date.now() - updated < 7 * 24 * 60 * 60 * 1000;
   }).length;
-  return { visible, total: allInspections.length, totalPhotos, averageProgress, activeThisWeek };
+  const localDrafts = allInspections.filter((inspection) => inspection.localDraftAt).length;
+  return { visible, total: allInspections.length, totalPhotos, averageProgress, activeThisWeek, localDrafts };
+}
+
+function getDraftKey(id) {
+  if (!state.user?.id || !id) return "";
+  return `${DRAFT_PREFIX}.${state.user.id}.${id}`;
+}
+
+function sanitizeInspectionForDraft(inspection) {
+  const copy = JSON.parse(JSON.stringify(inspection));
+  Object.values(copy.answers || {}).forEach((answer) => {
+    answer.photos = (answer.photos || []).map((photo) => {
+      if (!photo.path) return photo;
+      const { data, ...safePhoto } = photo;
+      return safePhoto;
+    });
+  });
+  delete copy.localDraftAt;
+  return copy;
+}
+
+function saveLocalDraft(inspection) {
+  const key = getDraftKey(inspection.id);
+  if (!key) return "";
+  const savedAt = new Date().toISOString();
+  getDraftStorage().setItem(key, JSON.stringify({
+    savedAt,
+    inspection: sanitizeInspectionForDraft(inspection),
+  }));
+  inspection.localDraftAt = savedAt;
+  return savedAt;
+}
+
+function clearLocalDraft(id) {
+  const key = getDraftKey(id);
+  if (!key) return;
+  localStorage.removeItem(key);
+  sessionStorage.removeItem(key);
+}
+
+function readLocalDraft(id) {
+  const key = getDraftKey(id);
+  if (!key) return null;
+  try {
+    const draft = JSON.parse((getDraftStorage().getItem(key) || localStorage.getItem(key) || sessionStorage.getItem(key)) || "null");
+    if (!draft?.inspection?.id || !draft?.savedAt) return null;
+    return draft;
+  } catch {
+    clearLocalDraft(id);
+    return null;
+  }
+}
+
+function clearLocalDraftIfSynced(id, syncedDraftAt) {
+  const draft = readLocalDraft(id);
+  if (!draft || !syncedDraftAt || draft.savedAt <= syncedDraftAt) clearLocalDraft(id);
+}
+
+async function applyLocalDrafts(inspections) {
+  return Promise.all(inspections.map(async (inspection) => {
+    const draft = readLocalDraft(inspection.id);
+    if (!draft) return inspection;
+    const serverTime = new Date(inspection.updatedAt || 0).getTime();
+    const draftTime = new Date(draft.savedAt || 0).getTime();
+    if (draftTime <= serverTime) {
+      clearLocalDraft(inspection.id);
+      return inspection;
+    }
+    const merged = {
+      ...inspection,
+      ...draft.inspection,
+      id: inspection.id,
+      createdAt: inspection.createdAt,
+      updatedAt: draft.savedAt,
+      localDraftAt: draft.savedAt,
+      answers: { ...inspection.answers, ...(draft.inspection.answers || {}) },
+    };
+    return hydrateInspectionPhotos(merged);
+  }));
 }
 
 async function render() {
@@ -259,7 +382,7 @@ function renderFatalError(error) {
   $app.innerHTML = `
     <div class="app-shell">
       <header class="topbar">
-        <div class="brand"><span class="brand-mark">I</span><span>Inspecto</span></div>
+        ${renderBrand()}
       </header>
       <main class="container">
         <section class="empty">
@@ -285,7 +408,8 @@ async function loadInspections() {
     return false;
   }
 
-  state.inspections = await Promise.all(data.map(async (row) => hydrateInspectionPhotos(fromDbInspection(row))));
+  const remoteInspections = await Promise.all(data.map(async (row) => hydrateInspectionPhotos(fromDbInspection(row))));
+  state.inspections = await applyLocalDrafts(remoteInspections);
   return true;
 }
 
@@ -310,6 +434,7 @@ function fromDbInspection(row) {
     id: row.id,
     address: row.address || payload.address || "",
     propertyType: payload.propertyType || "unspecified",
+    status: payload.status || DEFAULT_INSPECTION_STATUS,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     answers: { ...inspection.answers, ...(payload.answers || {}) },
@@ -320,6 +445,7 @@ function toDbPayload(inspection) {
   return {
     address: inspection.address,
     propertyType: inspection.propertyType || DEFAULT_PROPERTY_TYPE,
+    status: inspection.status || DEFAULT_INSPECTION_STATUS,
     answers: inspection.answers,
   };
 }
@@ -346,9 +472,9 @@ function renderAuth(mode = "login", message = "") {
   $app.innerHTML = `
     <main class="auth-layout">
       <section class="auth-visual">
-        <div class="brand"><span class="brand-mark">I</span><span>Inspecto</span></div>
+        ${renderBrand("hero")}
         <h1>Compiler une inspection sans perdre le fil.</h1>
-        <p>Un espace simple pour creer un dossier par immeuble, joindre les photos au bon endroit et retrouver l'historique lie a ton profil.</p>
+        <p>Un espace Habiko pour creer un dossier par immeuble, joindre les photos au bon endroit et retrouver l'historique lie a ton profil.</p>
       </section>
       <section class="auth-panel">
         <div class="panel">
@@ -424,7 +550,7 @@ function renderTopbar(user) {
   const name = user?.user_metadata?.name || user?.email || "";
   return `
     <header class="topbar">
-      <div class="brand"><span class="brand-mark">I</span><span>Inspecto</span></div>
+      ${renderBrand()}
       <div class="topbar-actions">
         <span class="user-chip">${escapeHtml(name)}</span>
         <button class="btn ghost" id="archiveBtn">Archives</button>
@@ -461,9 +587,18 @@ async function saveOpenFormIfPresent() {
 }
 
 function renderArchive() {
-  const filtered = state.propertyTypeFilter === "all"
-    ? state.inspections
-    : state.inspections.filter((inspection) => (inspection.propertyType || DEFAULT_PROPERTY_TYPE) === state.propertyTypeFilter);
+  const query = state.searchQuery.trim().toLowerCase();
+  const filtered = state.inspections.filter((inspection) => {
+    const matchesType = state.propertyTypeFilter === "all"
+      || (inspection.propertyType || DEFAULT_PROPERTY_TYPE) === state.propertyTypeFilter;
+    const matchesStatus = state.statusFilter === "all"
+      || (inspection.status || DEFAULT_INSPECTION_STATUS) === state.statusFilter;
+    const matchesSearch = !query
+      || (inspection.address || "").toLowerCase().includes(query)
+      || propertyTypeLabel(inspection.propertyType).toLowerCase().includes(query)
+      || statusLabel(inspection.status).toLowerCase().includes(query);
+    return matchesType && matchesStatus && matchesSearch;
+  });
   const inspections = [...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const archiveMetrics = getArchiveMetrics(state.inspections, inspections);
   $app.innerHTML = `
@@ -478,8 +613,16 @@ function renderArchive() {
           </div>
           <div class="archive-controls">
             <label>
-              <span>Filtrer</span>
+              <span>Type</span>
               <select id="propertyTypeFilter">${renderPropertyTypeOptions(state.propertyTypeFilter, true)}</select>
+            </label>
+            <label>
+              <span>Statut</span>
+              <select id="statusFilter">${renderStatusOptions(state.statusFilter, true)}</select>
+            </label>
+            <label class="search-control">
+              <span>Recherche</span>
+              <input id="archiveSearch" value="${escapeHtml(state.searchQuery)}" placeholder="Adresse, type ou statut" />
             </label>
             <label>
               <span>Nouveau dossier</span>
@@ -497,7 +640,7 @@ function renderArchive() {
                   <span class="eyebrow">Dossiers</span>
                   <h2>File de travail</h2>
                 </div>
-                <span class="muted">${state.propertyTypeFilter === "all" ? "Tous les types" : propertyTypeLabel(state.propertyTypeFilter)}</span>
+                <span class="muted">${archiveFilterSummary()}</span>
               </div>
               <div class="archive-grid">
                 ${inspections.map((inspection) => renderInspectionCard(inspection)).join("")}
@@ -519,6 +662,19 @@ function renderArchive() {
     state.propertyTypeFilter = event.target.value;
     renderArchive();
   });
+  document.querySelector("#statusFilter").addEventListener("change", (event) => {
+    state.statusFilter = event.target.value;
+    renderArchive();
+  });
+  document.querySelector("#archiveSearch").addEventListener("change", (event) => {
+    state.searchQuery = event.target.value;
+    renderArchive();
+  });
+  document.querySelector("#archiveSearch").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    state.searchQuery = event.currentTarget.value;
+    renderArchive();
+  });
   document.querySelector("#newPropertyType").addEventListener("change", (event) => {
     state.newPropertyType = event.target.value;
   });
@@ -526,6 +682,12 @@ function renderArchive() {
   document.querySelectorAll("[data-filter-type]").forEach((button) => {
     button.addEventListener("click", () => {
       state.propertyTypeFilter = button.dataset.filterType;
+      renderArchive();
+    });
+  });
+  document.querySelectorAll("[data-filter-status]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.statusFilter = button.dataset.filterStatus;
       renderArchive();
     });
   });
@@ -546,11 +708,18 @@ function renderArchive() {
   });
 }
 
+function archiveFilterSummary() {
+  const type = state.propertyTypeFilter === "all" ? "Tous les types" : propertyTypeLabel(state.propertyTypeFilter);
+  const status = state.statusFilter === "all" ? "tous les statuts" : statusLabel(state.statusFilter).toLowerCase();
+  return `${type} - ${status}`;
+}
+
 function renderOpsStrip(metrics) {
   const items = [
     ["Dossiers visibles", metrics.visible, `${metrics.total} au total`],
     ["Photos archivees", metrics.totalPhotos, "Annexes PDF incluses"],
     ["Progression moyenne", `${metrics.averageProgress}%`, `${TOTAL_INSPECTION_ITEMS} points par dossier`],
+    ["Brouillons locaux", metrics.localDrafts, "Proteges sur cet appareil"],
     ["Actifs 7 jours", metrics.activeThisWeek, "Dernieres interventions"],
   ];
   return `
@@ -588,8 +757,30 @@ function renderPropertyTypeRail(inspections) {
         </div>
       </div>
       <div class="type-list">${rows}</div>
+      <div class="workspace-heading compact">
+        <div>
+          <span class="eyebrow">Cycle</span>
+          <h2>Statuts</h2>
+        </div>
+      </div>
+      <div class="type-list">${renderStatusRail(inspections)}</div>
     </aside>
   `;
+}
+
+function renderStatusRail(inspections) {
+  return inspectionStatuses.map(([status, label]) => {
+    const count = status === "all"
+      ? inspections.length
+      : inspections.filter((inspection) => (inspection.status || DEFAULT_INSPECTION_STATUS) === status).length;
+    const active = state.statusFilter === status ? "active" : "";
+    return `
+      <button class="${active}" type="button" data-filter-status="${status}">
+        <span>${escapeHtml(label)}</span>
+        <strong>${count}</strong>
+      </button>
+    `;
+  }).join("");
 }
 
 function renderInspectionCard(inspection) {
@@ -604,9 +795,11 @@ function renderInspectionCard(inspection) {
         <span style="width:${metrics.progress}%"></span>
       </div>
       <div class="card-meta">
+        <span class="badge status-badge status-${escapeHtml(inspection.status || DEFAULT_INSPECTION_STATUS)}">${escapeHtml(statusLabel(inspection.status))}</span>
         <span class="badge">${escapeHtml(propertyTypeLabel(inspection.propertyType))}</span>
         <span class="badge">${metrics.completed}/${TOTAL_INSPECTION_ITEMS} elements</span>
         <span class="badge">${metrics.photos} photo${metrics.photos > 1 ? "s" : ""}</span>
+        ${inspection.localDraftAt ? `<span class="badge local-badge">Brouillon local</span>` : ""}
       </div>
       <div class="topbar-actions">
         <button class="btn ghost" data-view="${inspection.id}">Consulter</button>
@@ -620,6 +813,7 @@ function renderInspectionCard(inspection) {
 async function createInspection() {
   const inspection = buildEmptyInspection();
   inspection.propertyType = state.newPropertyType || DEFAULT_PROPERTY_TYPE;
+  inspection.status = DEFAULT_INSPECTION_STATUS;
   const { data, error } = await supabaseClient
     .from("inspections")
     .insert({
@@ -639,6 +833,7 @@ async function deleteInspection(id) {
   if (!confirm("Supprimer cette inspection?")) return;
   const { error } = await supabaseClient.from("inspections").delete().eq("id", id);
   if (error) return showToast(error.message);
+  clearLocalDraft(id);
   await render();
 }
 
@@ -673,6 +868,10 @@ function renderDetail(id) {
         </section>
         <section class="summary-strip detail-summary">
           <article>
+            <span>Statut</span>
+            <strong>${escapeHtml(statusLabel(inspection.status))}</strong>
+          </article>
+          <article>
             <span>Type</span>
             <strong>${escapeHtml(propertyTypeLabel(inspection.propertyType))}</strong>
           </article>
@@ -706,7 +905,7 @@ function renderDetail(id) {
     render();
   });
   document.querySelector("#notionExportBtn").addEventListener("click", async () => exportInspectionForNotion(inspection));
-  document.querySelector("#pdfExportBtn").addEventListener("click", () => exportInspectionPdf(inspection));
+  document.querySelector("#pdfExportBtn").addEventListener("click", (event) => runButtonAction(event.currentTarget, () => exportInspectionPdf(inspection)));
   bindPhotoViewer(inspection);
 }
 
@@ -793,6 +992,15 @@ function renderForm(id) {
                   <label for="propertyType">Type de propriete</label>
                   <select id="propertyType">${renderPropertyTypeOptions(inspection.propertyType || DEFAULT_PROPERTY_TYPE)}</select>
                 </div>
+                <div class="field">
+                  <label for="inspectionStatus">Statut du dossier</label>
+                  <select id="inspectionStatus">${renderStatusOptions(inspection.status || DEFAULT_INSPECTION_STATUS)}</select>
+                </div>
+                ${inspection.localDraftAt ? `
+                  <div class="draft-warning">
+                    Brouillon local recupere le ${formatDate(inspection.localDraftAt)}. Enregistre pour resynchroniser avec Supabase.
+                  </div>
+                ` : ""}
               </div>
             </div>
             ${inspectionSchema.map((category, categoryIndex) => renderCategory(category, categoryIndex, inspection)).join("")}
@@ -869,8 +1077,12 @@ function bindForm(inspectionId) {
     });
   });
 
-  form.addEventListener("input", () => scheduleInspectionAutosave(inspectionId));
-  form.addEventListener("change", () => scheduleInspectionAutosave(inspectionId));
+  const protectDraftThenSync = () => {
+    updateInspectionFromForm(inspectionId);
+    scheduleInspectionAutosave(inspectionId);
+  };
+  form.addEventListener("input", protectDraftThenSync);
+  form.addEventListener("change", protectDraftThenSync);
 
   document.querySelector("#cancelBtn").addEventListener("click", async (event) => {
     const saved = await runButtonAction(event.currentTarget, async () => {
@@ -925,7 +1137,7 @@ function bindForm(inspectionId) {
 
 function scheduleInspectionAutosave(inspectionId) {
   clearTimeout(state.saveTimers.get(inspectionId));
-  setSaveStatus("Sauvegarde en attente...");
+  setSaveStatus("Brouillon local protege - sync en attente...");
   state.saveTimers.set(inspectionId, setTimeout(async () => {
     state.saveTimers.delete(inspectionId);
     try {
@@ -946,28 +1158,40 @@ async function flushInspectionAutosave(inspectionId) {
 }
 
 async function saveInspectionFromForm(inspectionId, options = {}) {
-  const form = document.querySelector("#inspectionForm");
-  if (!form) return;
-  const inspection = findInspection(inspectionId);
-  if (!inspection) throw new Error("Inspection introuvable.");
-  inspection.address = document.querySelector("#address").value.trim();
-  inspection.propertyType = document.querySelector("#propertyType")?.value || DEFAULT_PROPERTY_TYPE;
-  document.querySelectorAll("[data-question]").forEach((question) => {
-    const key = question.dataset.question;
-    inspection.answers[key].ok = question.querySelector('[data-field="ok"]').checked;
-    inspection.answers[key].note = question.querySelector('[data-field="note"]').value.trim();
-  });
+  const inspection = updateInspectionFromForm(inspectionId);
+  if (!inspection) return;
   if (!options.silent) setSaveStatus("Sauvegarde...");
   await saveInspection(inspection);
   if (!options.silent) setSaveStatus("Sauvegarde faite");
 }
 
+function updateInspectionFromForm(inspectionId) {
+  const form = document.querySelector("#inspectionForm");
+  if (!form) return null;
+  const inspection = findInspection(inspectionId);
+  if (!inspection) throw new Error("Inspection introuvable.");
+  inspection.address = document.querySelector("#address").value.trim();
+  inspection.propertyType = document.querySelector("#propertyType")?.value || DEFAULT_PROPERTY_TYPE;
+  inspection.status = document.querySelector("#inspectionStatus")?.value || DEFAULT_INSPECTION_STATUS;
+  document.querySelectorAll("[data-question]").forEach((question) => {
+    const key = question.dataset.question;
+    inspection.answers[key].ok = question.querySelector('[data-field="ok"]').checked;
+    inspection.answers[key].note = question.querySelector('[data-field="note"]').value.trim();
+  });
+  inspection.updatedAt = new Date().toISOString();
+  saveLocalDraft(inspection);
+  return inspection;
+}
+
 async function saveInspection(inspection) {
+  const draftSavedAt = saveLocalDraft(inspection);
   const snapshot = JSON.parse(JSON.stringify({
     id: inspection.id,
     address: inspection.address,
     propertyType: inspection.propertyType || DEFAULT_PROPERTY_TYPE,
+    status: inspection.status || DEFAULT_INSPECTION_STATUS,
     answers: inspection.answers,
+    draftSavedAt,
   }));
   const previous = state.saveQueues.get(inspection.id) || Promise.resolve();
   const next = previous
@@ -988,6 +1212,7 @@ async function saveInspection(inspection) {
       const updated = await hydrateInspectionPhotos(fromDbInspection(data));
       const index = state.inspections.findIndex((candidate) => candidate.id === inspection.id);
       if (index >= 0) state.inspections[index] = updated;
+      clearLocalDraftIfSynced(inspection.id, snapshot.draftSavedAt);
       return updated;
     })
     .finally(() => {
@@ -1054,6 +1279,7 @@ function buildNotionMarkdown(inspection) {
     `# Inspection - ${inspection.address || "Adresse a completer"}`,
     "",
     `**Type de propriete:** ${propertyTypeLabel(inspection.propertyType)}`,
+    `**Statut:** ${statusLabel(inspection.status)}`,
     `**Cree le:** ${formatDate(inspection.createdAt)}`,
     `**Modifie le:** ${formatDate(inspection.updatedAt)}`,
     "",
@@ -1069,11 +1295,13 @@ function buildNotionMarkdown(inspection) {
   return lines.join("\n");
 }
 
-function exportInspectionPdf(inspection) {
+async function exportInspectionPdf(inspection) {
   const html = buildPdfHtml(inspection);
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     downloadTextFile(`${slugify(inspection.address || "inspection")}-rapport.html`, html);
+    inspection.status = "exported";
+    await saveInspection(inspection);
     return showToast("Fenetre bloquee: fichier HTML telecharge pour impression PDF.");
   }
   printWindow.document.open();
@@ -1081,11 +1309,44 @@ function exportInspectionPdf(inspection) {
   printWindow.document.close();
   printWindow.document.querySelector("#printBtn")?.addEventListener("click", () => printWindow.print());
   setTimeout(() => printWindow.focus(), 50);
+  inspection.status = "exported";
+  await saveInspection(inspection);
   showToast("Rapport PDF pret dans un nouvel onglet.");
 }
 
 function buildPdfHtml(inspection) {
   const photos = collectInspectionPhotos(inspection);
+  const metrics = getInspectionMetrics(inspection);
+  const riskItems = collectInspectionRiskItems(inspection);
+  const generatedAt = formatDate(new Date().toISOString());
+  const riskSection = riskItems.length ? `
+    <section class="section risk-summary">
+      <h2>Resume des points a verifier</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Element</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${riskItems.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.category)}</td>
+              <td>${escapeHtml(item.title)}</td>
+              <td>${escapeHtml(item.note || "Aucune note")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </section>
+  ` : `
+    <section class="section risk-summary">
+      <h2>Resume des points a verifier</h2>
+      <p>Aucun point non confirme avec note inscrite.</p>
+    </section>
+  `;
   const sections = inspectionSchema.map((category, categoryIndex) => `
     <section class="section">
       <h2>${categoryIndex + 1}) ${escapeHtml(category.title)}</h2>
@@ -1123,39 +1384,78 @@ function buildPdfHtml(inspection) {
     <title>Rapport inspection - ${escapeHtml(inspection.address || "Sans adresse")}</title>
     <style>
       * { box-sizing: border-box; }
-      body { margin: 0; color: #17211c; font-family: Arial, Helvetica, sans-serif; line-height: 1.45; }
-      main { max-width: 920px; margin: 0 auto; padding: 32px; }
-      h1 { margin: 0 0 8px; font-size: 30px; }
-      h2 { margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #22664b; color: #164835; font-size: 21px; }
+      body { margin: 0; color: #17211c; background: #f5f6f2; font-family: Arial, Helvetica, sans-serif; line-height: 1.45; }
+      main { max-width: 980px; margin: 0 auto; padding: 28px; background: #fff; }
+      h1 { margin: 0 0 10px; font-size: 38px; line-height: 1; letter-spacing: 0; }
+      h2 { margin: 30px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #006b70; color: #005359; font-size: 21px; }
       h3 { margin: 0 0 6px; font-size: 16px; }
-      .meta { margin: 0 0 22px; color: #5f6b64; }
+      table { width: 100%; border-collapse: collapse; break-inside: avoid; }
+      th, td { padding: 9px; border: 1px solid #d9d2c7; text-align: left; vertical-align: top; }
+      th { background: #e4f2f2; color: #005359; font-size: 12px; text-transform: uppercase; }
+      .cover { min-height: 88vh; display: grid; align-content: space-between; padding: 34px; border: 1px solid #d9d2c7; background: linear-gradient(135deg, #e4f2f2, #fff3e8 64%, #fff); break-after: page; }
+      .cover-logo { display: block; width: 168px; margin: 0 0 22px; border-radius: 10px; }
+      .cover-mark { color: #006b70; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+      .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 24px 0; }
+      .meta div { padding: 12px; border: 1px solid #d9d2c7; border-radius: 6px; background: rgba(255, 255, 255, 0.74); }
+      .meta span { display: block; color: #5f6b64; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+      .meta strong { display: block; margin-top: 5px; font-size: 16px; }
       .item { break-inside: avoid; margin: 0 0 12px; padding: 12px; border: 1px solid #d9d2c7; border-radius: 6px; }
       .help { margin-top: 0; color: #5f6b64; }
+      .badge-line { display: flex; flex-wrap: wrap; gap: 8px; }
+      .badge-line span { padding: 7px 9px; border: 1px solid #d9d2c7; border-radius: 999px; background: #e4f2f2; color: #005359; font-size: 12px; font-weight: 700; }
       .photo-annex { break-before: page; }
       .photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
       figure { break-inside: avoid; margin: 0; border: 1px solid #d9d2c7; border-radius: 6px; overflow: hidden; }
       img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: #f3eee4; }
       figcaption { padding: 8px; font-size: 12px; color: #4d5a52; }
       .print-actions { position: sticky; top: 0; display: flex; justify-content: flex-end; padding: 10px 0; background: #fff; }
-      button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 6px; background: #22664b; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
-      @media print { main { padding: 0; } .print-actions { display: none; } }
+      button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 6px; background: #006b70; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+      @page { margin: 14mm; }
+      @media print { body { background: #fff; } main { padding: 0; } .print-actions { display: none; } .cover { min-height: 250mm; } }
     </style>
   </head>
   <body>
     <main>
       <div class="print-actions"><button id="printBtn" type="button">Enregistrer en PDF</button></div>
-      <h1>Rapport d'inspection</h1>
-      <p class="meta">
-        <strong>Adresse:</strong> ${escapeHtml(inspection.address || "Adresse a completer")}<br />
-        <strong>Type de propriete:</strong> ${escapeHtml(propertyTypeLabel(inspection.propertyType))}<br />
-        <strong>Cree le:</strong> ${formatDate(inspection.createdAt)}<br />
-        <strong>Modifie le:</strong> ${formatDate(inspection.updatedAt)}
-      </p>
+      <section class="cover">
+        <div>
+          <img class="cover-logo" src="${BRAND_LOGO_SRC}" alt="${BRAND_NAME}" />
+          <div class="cover-mark">${BRAND_NAME} / ${PRODUCT_NAME}</div>
+          <h1>Rapport d'inspection</h1>
+          <p>${escapeHtml(inspection.address || "Adresse a completer")}</p>
+          <div class="badge-line">
+            <span>${escapeHtml(statusLabel(inspection.status))}</span>
+            <span>${escapeHtml(propertyTypeLabel(inspection.propertyType))}</span>
+            <span>${metrics.completed}/${TOTAL_INSPECTION_ITEMS} elements documentes</span>
+            <span>${metrics.photos} photos</span>
+          </div>
+        </div>
+        <div class="meta">
+          <div><span>Cree le</span><strong>${formatDate(inspection.createdAt)}</strong></div>
+          <div><span>Modifie le</span><strong>${formatDate(inspection.updatedAt)}</strong></div>
+          <div><span>Genere le</span><strong>${generatedAt}</strong></div>
+          <div><span>Points a verifier</span><strong>${riskItems.length}</strong></div>
+        </div>
+      </section>
+      ${riskSection}
       ${sections}
       ${photoSection}
     </main>
   </body>
 </html>`;
+}
+
+function collectInspectionRiskItems(inspection) {
+  const items = [];
+  inspectionSchema.forEach((category, categoryIndex) => {
+    category.items.forEach(([title], itemIndex) => {
+      const answer = inspection.answers[`${categoryIndex}-${itemIndex}`] || { ok: false, note: "", photos: [] };
+      if (!answer.ok && (answer.note || answer.photos.length)) {
+        items.push({ category: category.title, title, note: answer.note, photos: answer.photos.length });
+      }
+    });
+  });
+  return items;
 }
 
 function collectInspectionPhotos(inspection) {
