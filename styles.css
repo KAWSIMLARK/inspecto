@@ -38,7 +38,7 @@ html {
 
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   color: var(--ink);
   background:
     linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px),
@@ -76,7 +76,7 @@ select:focus-visible {
 }
 
 .app-shell {
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .topbar {
@@ -189,14 +189,14 @@ select:focus-visible {
 
 .auth-layout {
   display: grid;
-  min-height: 100vh;
+  min-height: 100dvh;
   grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
 }
 
 .auth-visual {
   position: relative;
   display: grid;
-  min-height: 100vh;
+  min-height: 100dvh;
   align-content: end;
   gap: 26px;
   overflow: hidden;
@@ -266,7 +266,7 @@ select:focus-visible {
 
 .auth-panel {
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   flex-direction: column;
   justify-content: center;
   padding: 28px;
@@ -1307,7 +1307,7 @@ body::before {
 }
 
 .auth-visual {
-  min-height: calc(100vh - 28px);
+  min-height: calc(100dvh - 28px);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
   background:
@@ -1617,5 +1617,424 @@ body::before {
 
   .container {
     width: min(100% - 20px, 1280px);
+  }
+}
+
+/* Phone-first operating layout */
+@media (max-width: 760px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    overflow-x: hidden;
+    background-size: 22px 22px, 22px 22px, auto, auto, auto;
+  }
+
+  .app-shell {
+    min-height: 100dvh;
+  }
+
+  .container {
+    width: 100%;
+    padding: 12px 12px calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    top: calc(8px + env(safe-area-inset-top));
+    width: calc(100% - 18px);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+    padding: 10px;
+    border-radius: 8px;
+  }
+
+  .brand {
+    width: 100%;
+    gap: 9px;
+  }
+
+  .brand-logo {
+    width: 82px;
+    height: 38px;
+    flex: 0 0 auto;
+  }
+
+  .brand-copy strong {
+    font-size: 14px;
+  }
+
+  .brand-copy small {
+    max-width: 160px;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar > .topbar-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .topbar > .topbar-actions .user-chip {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
+    min-height: 38px;
+    font-size: 11px;
+  }
+
+  .topbar > .topbar-actions .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 13px;
+    touch-action: manipulation;
+  }
+
+  .hero-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    margin: 12px 0;
+    padding: 18px;
+    border-radius: 8px;
+    background: linear-gradient(145deg, rgba(0, 83, 89, 0.98), rgba(0, 107, 112, 0.94) 72%, rgba(255, 107, 0, 0.86));
+  }
+
+  .hero-row h1 {
+    margin-bottom: 10px;
+    font-size: 32px;
+    line-height: 1.03;
+  }
+
+  .hero-row p {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .eyebrow {
+    width: fit-content;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .archive-controls {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .archive-controls label,
+  .archive-controls .search-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .archive-controls input,
+  .archive-controls select,
+  .field input,
+  .field select,
+  .field textarea {
+    min-height: 46px;
+    border-radius: 8px;
+    font-size: 16px;
+  }
+
+  .ops-strip {
+    display: grid;
+    grid-auto-columns: minmax(230px, 78vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 2px 2px 12px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .ops-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .metric-tile {
+    min-height: 108px;
+    padding: 14px;
+    scroll-snap-align: start;
+  }
+
+  .metric-tile strong {
+    font-size: 32px;
+  }
+
+  .archive-workspace,
+  .form-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .archive-main,
+  .ops-rail,
+  .category,
+  .panel,
+  .side-nav,
+  .inspection-card {
+    border-radius: 8px;
+  }
+
+  .archive-main {
+    padding: 10px;
+  }
+
+  .workspace-heading {
+    display: grid;
+    align-items: start;
+    gap: 8px;
+    padding: 2px 2px 12px;
+  }
+
+  .archive-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inspection-card {
+    min-height: auto;
+    gap: 12px;
+    padding: 15px;
+  }
+
+  .inspection-card .topbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .inspection-card .topbar-actions .btn {
+    width: 100%;
+  }
+
+  .inspection-card .topbar-actions .danger {
+    grid-column: 1 / -1;
+  }
+
+  .card-title {
+    font-size: 17px;
+    overflow-wrap: anywhere;
+  }
+
+  .card-meta {
+    gap: 6px;
+  }
+
+  .badge {
+    min-height: 26px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .ops-rail {
+    position: static;
+    overflow: hidden;
+  }
+
+  .type-list button {
+    min-height: 46px;
+  }
+
+  .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .detail-summary article {
+    padding: 12px;
+  }
+
+  .detail-summary article:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .detail-summary strong {
+    font-size: 15px;
+    overflow-wrap: anywhere;
+  }
+
+  .detail-content,
+  .form-content {
+    gap: 12px;
+  }
+
+  .side-nav {
+    position: sticky;
+    top: calc(126px + env(safe-area-inset-top));
+    z-index: 6;
+    display: grid;
+    grid-auto-columns: minmax(156px, 44vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 8px;
+    scrollbar-width: none;
+  }
+
+  .side-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .side-progress {
+    min-width: 150px;
+    border-right: 1px solid rgba(255, 255, 255, 0.16);
+    border-bottom: 0;
+  }
+
+  .side-nav button {
+    min-height: 44px;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 10px;
+    text-align: center;
+  }
+
+  .side-nav button span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .panel-inner {
+    padding: 16px;
+  }
+
+  .category-header {
+    display: grid;
+    gap: 8px;
+    padding: 13px;
+  }
+
+  .category-header h2 {
+    font-size: 17px;
+  }
+
+  .question {
+    gap: 11px;
+    padding: 14px;
+  }
+
+  .question-top,
+  .detail-heading {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .question-title {
+    font-size: 15px;
+    line-height: 1.35;
+  }
+
+  .question-help {
+    font-size: 13px;
+  }
+
+  .check {
+    width: 22px;
+    height: 22px;
+  }
+
+  .thumbs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .detail-photos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 7;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, transparent, var(--bg) 26%);
+  }
+
+  .form-actions .btn,
+  .save-status {
+    width: 100%;
+  }
+
+  .save-status {
+    justify-content: center;
+    min-height: 36px;
+    margin-right: 0;
+    text-align: center;
+  }
+
+  .auth-layout {
+    min-height: 100dvh;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .auth-visual {
+    min-height: auto;
+    gap: 18px;
+    padding: 22px;
+  }
+
+  .auth-visual::before,
+  .auth-visual::after {
+    display: none;
+  }
+
+  .auth-visual h1 {
+    font-size: 34px;
+    line-height: 1.02;
+  }
+
+  .auth-visual p {
+    font-size: 15px;
+  }
+
+  .auth-panel {
+    min-height: auto;
+    padding: 0;
+  }
+
+  .brand-hero .brand-logo {
+    width: 184px;
+  }
+}
+
+@media (max-width: 380px) {
+  .hero-row h1,
+  .auth-visual h1 {
+    font-size: 29px;
+  }
+
+  .topbar > .topbar-actions,
+  .inspection-card .topbar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-card .topbar-actions .danger {
+    grid-column: auto;
+  }
+
+  .thumbs,
+  .detail-photos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -1,5 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
+const SUPABASE_MODULE_URL = "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = "https://itabonpgzpokcdfcyhdx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0YWJvbnBnenBva2NkZmN5aGR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyNjI3MDksImV4cCI6MjA5MzgzODcwOX0.FGR5Ol7H8Ln7zEhCG_gbKqfRL-lEoQg2BFPlCVGLwSs";
 const PHOTO_BUCKET = "inspection-photos";
@@ -13,6 +12,9 @@ const DEFAULT_INSPECTION_STATUS = "draft";
 const SIGNED_PHOTO_URL_TTL = 60 * 60 * 24;
 const MAX_PHOTO_SIZE = 1600;
 const PHOTO_QUALITY = 0.78;
+const BOOT_TIMEOUT_MS = 12000;
+const NETWORK_TIMEOUT_MS = 16000;
+const PHOTO_SIGN_TIMEOUT_MS = 4500;
 
 const propertyTypes = [
   ["unspecified", "Non precise"],
@@ -108,6 +110,7 @@ const inspectionSchema = [
 
 const TOTAL_INSPECTION_ITEMS = inspectionSchema.reduce((sum, category) => sum + category.items.length, 0);
 const $app = document.querySelector("#app");
+let supabaseClient = null;
 const adaptiveAuthStorage = {
   getItem(key) {
     return getRememberPreference() ? localStorage.getItem(key) : sessionStorage.getItem(key);
@@ -126,14 +129,6 @@ const adaptiveAuthStorage = {
     sessionStorage.removeItem(key);
   },
 };
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storage: adaptiveAuthStorage,
-  },
-});
 const state = {
   user: null,
   inspections: [],
@@ -160,9 +155,33 @@ function getDraftStorage() {
   return getRememberPreference() ? localStorage : sessionStorage;
 }
 
+function withTimeout(promise, ms, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(label)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+async function bootSupabase() {
+  const module = await withTimeout(
+    import(SUPABASE_MODULE_URL),
+    BOOT_TIMEOUT_MS,
+    "Le module Supabase prend trop de temps a charger. Verifie le reseau mobile puis recharge."
+  );
+  supabaseClient = module.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: adaptiveAuthStorage,
+    },
+  });
+}
+
 window.inspectoClearCache = async function inspectoClearCache() {
   try {
-    await supabaseClient.auth.signOut();
+    await supabaseClient?.auth?.signOut();
   } catch {
     // Continue clearing browser storage even if Supabase is unavailable.
   }
@@ -363,7 +382,11 @@ async function renderApp() {
     return;
   }
 
-  const { data } = await supabaseClient.auth.getUser();
+  const { data } = await withTimeout(
+    supabaseClient.auth.getUser(),
+    NETWORK_TIMEOUT_MS,
+    "La connexion a Supabase prend trop de temps. Recharge la page ou passe a un reseau plus stable."
+  );
   state.user = data.user || null;
   if (!state.user) {
     renderAuth();
@@ -397,10 +420,14 @@ function renderFatalError(error) {
 }
 
 async function loadInspections() {
-  const { data, error } = await supabaseClient
-    .from("inspections")
-    .select("*")
-    .order("updated_at", { ascending: false });
+  const { data, error } = await withTimeout(
+    supabaseClient
+      .from("inspections")
+      .select("*")
+      .order("updated_at", { ascending: false }),
+    NETWORK_TIMEOUT_MS,
+    "Les archives prennent trop de temps a charger. La connexion mobile semble instable."
+  );
 
   if (error) {
     renderSetupError(error);
@@ -417,10 +444,18 @@ async function hydrateInspectionPhotos(inspection) {
   const photos = Object.values(inspection.answers).flatMap((answer) => answer.photos || []);
   await Promise.all(photos.map(async (photo) => {
     if (!photo.path) return;
-    const { data, error } = await supabaseClient.storage
-      .from(PHOTO_BUCKET)
-      .createSignedUrl(photo.path, SIGNED_PHOTO_URL_TTL);
-    if (!error && data?.signedUrl) photo.data = data.signedUrl;
+    try {
+      const { data, error } = await withTimeout(
+        supabaseClient.storage
+          .from(PHOTO_BUCKET)
+          .createSignedUrl(photo.path, SIGNED_PHOTO_URL_TTL),
+        PHOTO_SIGN_TIMEOUT_MS,
+        "Photo trop longue a signer."
+      );
+      if (!error && data?.signedUrl) photo.data = data.signedUrl;
+    } catch {
+      // Keep the inspection usable even if a photo URL is slow on mobile.
+    }
   }));
   return inspection;
 }
@@ -1575,13 +1610,27 @@ function formatDate(value) {
 window.addEventListener("hashchange", render);
 window.addEventListener("error", (event) => {
   console.error(event.error || event.message);
+  if (!$app.dataset.ready) renderFatalError(event.error || new Error(event.message));
 });
 window.addEventListener("unhandledrejection", (event) => {
   console.error(event.reason);
+  if (!$app.dataset.ready) renderFatalError(event.reason);
 });
-supabaseClient?.auth.onAuthStateChange((event) => {
-  if (event === "SIGNED_OUT") render();
-  if (event === "SIGNED_IN" && !state.user) render();
-  if (event === "USER_UPDATED") render();
-});
-render();
+
+async function startApp() {
+  try {
+    await bootSupabase();
+    supabaseClient.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") render();
+      if (event === "SIGNED_IN" && !state.user) render();
+      if (event === "USER_UPDATED") render();
+    });
+    await render();
+    $app.dataset.ready = "true";
+  } catch (error) {
+    $app.dataset.ready = "error";
+    renderFatalError(error);
+  }
+}
+
+startApp();
